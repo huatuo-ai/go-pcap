@@ -441,6 +441,38 @@ func getSkippers(a, b, size uint8, inst []bpf.Instruction) (uint8, uint8) {
 	return getSkipper(a, size, inst), getSkipper(b, size, inst)
 }
 
+// =============================================================================
+// Instruction helpers — used by the *prog builder methods above
+// =============================================================================
+
+func loadIPv4SourceAddress(layout linkLayout) bpf.LoadAbsolute {
+	return bpf.LoadAbsolute{Off: layout.l3Off() + intraIP4SrcAddr, Size: lengthWord}
+}
+
+func loadIPv4DestinationAddress(layout linkLayout) bpf.LoadAbsolute {
+	return bpf.LoadAbsolute{Off: layout.l3Off() + intraIP4DstAddr, Size: lengthWord}
+}
+
+func loadArpSenderAddress(layout linkLayout) bpf.LoadAbsolute {
+	return bpf.LoadAbsolute{Off: layout.l3Off() + intraArpSenderAddr, Size: lengthWord}
+}
+
+func loadArpTargetAddress(layout linkLayout) bpf.LoadAbsolute {
+	return bpf.LoadAbsolute{Off: layout.l3Off() + intraArpTargetAddr, Size: lengthWord}
+}
+
+func loadIPv4Protocol(layout linkLayout) bpf.LoadAbsolute {
+	return bpf.LoadAbsolute{Off: layout.l3Off() + intraIP4Protocol, Size: lengthByte}
+}
+
+func loadIPv4SourcePort(layout linkLayout) bpf.LoadIndirect {
+	return bpf.LoadIndirect{Off: layout.l3Off() + intraIP4SrcPort, Size: lengthHalf}
+}
+
+func loadIPv4DestinationPort(layout linkLayout) bpf.LoadIndirect {
+	return bpf.LoadIndirect{Off: layout.l3Off() + intraIP4DstPort, Size: lengthHalf}
+}
+
 var (
 	loadEthernetSourceFirst      = bpf.LoadAbsolute{Off: 6, Size: lengthHalf}
 	loadEthernetSourceLast       = bpf.LoadAbsolute{Off: 8, Size: lengthWord}
