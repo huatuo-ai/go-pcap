@@ -49,6 +49,7 @@ const (
 	tokenPort
 	tokenPortRange
 	tokenEther
+	tokenMulticast
 )
 
 var lexerTokens = map[string]ExpressionToken{
@@ -69,6 +70,7 @@ var lexerTokens = map[string]ExpressionToken{
 	"ip6":       tokenIP6,
 	"tcp":       tokenTCP,
 	"udp":       tokenUDP,
+	"multicast": tokenMulticast,
 }
 
 type buffer struct {

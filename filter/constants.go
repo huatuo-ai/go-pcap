@@ -79,6 +79,7 @@ const (
 	filterKindNet
 	filterKindPort
 	filterKindPortRange
+	filterKindMulticast
 )
 
 //nolint:unused
@@ -87,12 +88,15 @@ var kinds = map[string]filterKind{
 	"net":       filterKindNet,
 	"port":      filterKindPort,
 	"portrange": filterKindPortRange,
+	"multicast": filterKindMulticast,
 }
+
 var kinds2 = map[ExpressionToken]filterKind{
 	tokenHost:      filterKindHost,
 	tokenNet:       filterKindNet,
 	tokenPort:      filterKindPort,
 	tokenPortRange: filterKindPortRange,
+	tokenMulticast: filterKindMulticast,
 }
 
 type filterDirection int
