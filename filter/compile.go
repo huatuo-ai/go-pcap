@@ -465,12 +465,28 @@ func loadIPv4Protocol(layout linkLayout) bpf.LoadAbsolute {
 	return bpf.LoadAbsolute{Off: layout.l3Off() + intraIP4Protocol, Size: lengthByte}
 }
 
+func loadIPv6Protocol(layout linkLayout) bpf.LoadAbsolute {
+	return bpf.LoadAbsolute{Off: layout.l3Off() + intraIP6NextHeader, Size: lengthByte}
+}
+
+func loadIPv6ContinuationProtocol(layout linkLayout) bpf.LoadAbsolute {
+	return bpf.LoadAbsolute{Off: layout.l3Off() + intraIP6ContHdrProto, Size: lengthByte}
+}
+
 func loadIPv4SourcePort(layout linkLayout) bpf.LoadIndirect {
 	return bpf.LoadIndirect{Off: layout.l3Off() + intraIP4SrcPort, Size: lengthHalf}
 }
 
 func loadIPv4DestinationPort(layout linkLayout) bpf.LoadIndirect {
 	return bpf.LoadIndirect{Off: layout.l3Off() + intraIP4DstPort, Size: lengthHalf}
+}
+
+func loadIPv6SourcePort(layout linkLayout) bpf.LoadAbsolute {
+	return bpf.LoadAbsolute{Off: layout.l3Off() + intraIP6SrcPort, Size: lengthHalf}
+}
+
+func loadIPv6DestinationPort(layout linkLayout) bpf.LoadAbsolute {
+	return bpf.LoadAbsolute{Off: layout.l3Off() + intraIP6DstPort, Size: lengthHalf}
 }
 
 var (
