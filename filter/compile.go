@@ -95,6 +95,62 @@ func (b *prog) loadIPv4HeaderOffset(onMiss labelID) {
 	b.emit(bpf.LoadMemShift{Off: b.layout.l3Off() + intraIP4HeaderSize})
 }
 
+func (b *prog) checkEtherAddresses(direction filterDirection, addr string, onMatch, onMiss labelID) {
+	hwAddr, _ := net.ParseMAC(addr)
+	if hwAddr == nil {
+		return
+	}
+	lastFour := binary.BigEndian.Uint32(hwAddr[len(hwAddr)-4:])
+	firstTwo := uint32(binary.BigEndian.Uint16(hwAddr[len(hwAddr)-6 : len(hwAddr)-4]))
+
+	switch direction {
+	case filterDirectionSrc:
+		cont := b.newLabel()
+		b.emit(loadEthernetSourceLast)
+		b.emitJumpIf(bpf.JumpEqual, lastFour, cont, onMiss)
+		b.bind(cont)
+		b.emit(loadEthernetSourceFirst)
+		b.emitJumpIf(bpf.JumpEqual, firstTwo, onMatch, onMiss)
+	case filterDirectionDst:
+		cont := b.newLabel()
+		b.emit(loadEthernetDestinationLast)
+		b.emitJumpIf(bpf.JumpEqual, lastFour, cont, onMiss)
+		b.bind(cont)
+		b.emit(loadEthernetDestinationFirst)
+		b.emitJumpIf(bpf.JumpEqual, firstTwo, onMatch, onMiss)
+	case filterDirectionSrcOrDst:
+		tryDst := b.newLabel()
+		cont1 := b.newLabel()
+		b.emit(loadEthernetSourceLast)
+		b.emitJumpIf(bpf.JumpEqual, lastFour, cont1, tryDst)
+		b.bind(cont1)
+		b.emit(loadEthernetSourceFirst)
+		b.emitJumpIf(bpf.JumpEqual, firstTwo, onMatch, tryDst)
+		b.bind(tryDst)
+		cont2 := b.newLabel()
+		b.emit(loadEthernetDestinationLast)
+		b.emitJumpIf(bpf.JumpEqual, lastFour, cont2, onMiss)
+		b.bind(cont2)
+		b.emit(loadEthernetDestinationFirst)
+		b.emitJumpIf(bpf.JumpEqual, firstTwo, onMatch, onMiss)
+	case filterDirectionSrcAndDst:
+		cont1 := b.newLabel()
+		b.emit(loadEthernetSourceLast)
+		b.emitJumpIf(bpf.JumpEqual, lastFour, cont1, onMiss)
+		b.bind(cont1)
+		cont2 := b.newLabel()
+		b.emit(loadEthernetSourceFirst)
+		b.emitJumpIf(bpf.JumpEqual, firstTwo, cont2, onMiss)
+		b.bind(cont2)
+		cont3 := b.newLabel()
+		b.emit(loadEthernetDestinationLast)
+		b.emitJumpIf(bpf.JumpEqual, lastFour, cont3, onMiss)
+		b.bind(cont3)
+		b.emit(loadEthernetDestinationFirst)
+		b.emitJumpIf(bpf.JumpEqual, firstTwo, onMatch, onMiss)
+	}
+}
+
 // =============================================================================
 // Legacy fixed-offset code generation. Everything below this banner assumes
 // Ethernet framing and hand-counted skip offsets; it is being replaced by the
