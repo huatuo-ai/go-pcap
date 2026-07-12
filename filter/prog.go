@@ -101,3 +101,42 @@ func (p *prog) emitJump(target labelID) {
 		inst: bpf.Jump{}, kind: instJump, targetT: target, targetF: labelInvalid,
 	})
 }
+
+type (
+	invalidLabelError struct {
+		idx   int
+		field string
+	}
+	unboundLabelError struct {
+		idx   int
+		label labelID
+	}
+	backwardJumpError struct {
+		idx       int
+		target    labelID
+		targetIdx int
+	}
+	skipOverflowError struct {
+		idx    int
+		target labelID
+		skip   int
+	}
+	alreadyFinalizedError struct{}
+)
+
+func (e invalidLabelError) Error() string {
+	return fmt.Sprintf("prog: inst %d: %s references labelInvalid", e.idx, e.field)
+}
+
+func (e unboundLabelError) Error() string {
+	return fmt.Sprintf("prog: inst %d: unbound label %d", e.idx, e.label)
+}
+
+func (e backwardJumpError) Error() string {
+	return fmt.Sprintf("prog: inst %d: backward jump to label %d (idx %d)", e.idx, e.target, e.targetIdx)
+}
+
+func (e skipOverflowError) Error() string {
+	return fmt.Sprintf("prog: inst %d: skip %d to label %d exceeds uint8", e.idx, e.skip, e.target)
+}
+func (e alreadyFinalizedError) Error() string { return "prog: finalize already called" }
