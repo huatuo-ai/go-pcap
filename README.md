@@ -175,15 +175,28 @@ make build
 ./pcap --help
 ```
 
-Cross-compilation is supported through the existing `OS` and `ARCH` Makefile
-variables. Build artifacts are written under `dist/`.
+Cross-compilation is supported through the `OS` and `ARCH` Makefile variables.
+Build artifacts are written under `dist/`. For 32-bit Linux ARM, select the
+ABI level explicitly:
+
+```sh
+make build OS=linux ARCH=arm GOARM=6 # dist/pcap-linux-armv6
+make build OS=linux ARCH=arm GOARM=7 # dist/pcap-linux-armv7
+```
+
+An ARMv7 binary must not be deployed to an ARMv6 device. The release matrix
+does not publish a soft-float ARM artifact.
 
 ## Platform support and limitations
 
 Capture support is available for Linux and macOS/Darwin. Packet capture usually
-requires the appropriate operating-system privileges. `RAW` is a compiler
-layout for packets beginning at an IP header; it is not a substitute for an
-Ethernet capture handle and cannot evaluate L2-only predicates.
+requires the appropriate operating-system privileges. On Linux the default
+capture path uses an AF_PACKET TPACKET_V3 mmap ring, so it also needs kernel
+support and `CAP_NET_RAW`. On older kernels or restricted containers,
+`./pcap --syscalls` bypasses the mmap/TPACKET_V3 path; it does not remove the
+capture-permission requirement. `RAW` is a compiler layout for packets
+beginning at an IP header; it is not a substitute for an Ethernet capture
+handle and cannot evaluate L2-only predicates.
 
 ## Contributing
 

@@ -166,13 +166,23 @@ make build
 ./pcap --help
 ```
 
-现有 Makefile 支持通过 `OS` 和 `ARCH` 变量进行交叉编译，构建产物位于 `dist/`。
+Makefile 支持通过 `OS` 和 `ARCH` 变量进行交叉编译，构建产物位于 `dist/`。32 位
+Linux ARM 必须显式选择 ABI 级别：
+
+```sh
+make build OS=linux ARCH=arm GOARM=6 # dist/pcap-linux-armv6
+make build OS=linux ARCH=arm GOARM=7 # dist/pcap-linux-armv7
+```
+
+ARMv7 二进制不能部署到 ARMv6 设备。当前发布矩阵不提供 soft-float ARM 构建产物。
 
 ## 平台支持与限制
 
-目前支持 Linux 和 macOS/Darwin 抓包。抓包通常需要操作系统授予相应权限。`RAW`
-是“报文从 IP header 开始”的编译布局，不等同于 Ethernet 抓包句柄，也不能执行仅
-适用于二层的原语。
+目前支持 Linux 和 macOS/Darwin 抓包。抓包通常需要操作系统授予相应权限。Linux
+默认抓包路径使用 AF_PACKET 的 TPACKET_V3 mmap ring，因此还需要内核支持和
+`CAP_NET_RAW`。对于较旧内核或受限容器，`./pcap --syscalls` 可以绕过
+mmap/TPACKET_V3 路径，但不会取消抓包权限要求。`RAW` 是“报文从 IP header 开始”的
+编译布局，不等同于 Ethernet 抓包句柄，也不能执行仅适用于二层的原语。
 
 ## 贡献
 
