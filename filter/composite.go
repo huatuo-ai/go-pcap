@@ -61,6 +61,95 @@ func (c composite) Compile() ([]bpf.Instruction, error) {
 	return inst, nil
 }
 
+func (c composite) emit(b *prog, onMatch, onMiss labelID) {
+	// Trailing always-accept (AND) / always-reject (OR) members are skipped via
+	// continue below, so the static index len-1 is not necessarily the last
+	// emitted filter; using it would leave the genuinely-last filter's
+	// fall-through dangling onto the returnKeep sentinel instead of onMatch/onMiss.
+	lastEmit := -1
+	for i, f := range c.filters {
+		if c.and && f.(emitter).isAlwaysAccept(b.layout) {
+			continue
+		}
+		if !c.and && f.(emitter).isAlwaysReject(b.layout) {
+			continue
+		}
+		lastEmit = i
+	}
+	if lastEmit < 0 {
+		// All members are always-skip. Unreachable given the always-accept/
+		// always-reject short-circuits in compileFilter, but jump explicitly
+		// rather than rely on fall-through aliasing the returnKeep sentinel.
+		if c.and {
+			b.emitJump(onMatch)
+		} else {
+			b.emitJump(onMiss)
+		}
+		return
+	}
+	for i, f := range c.filters {
+		if f.(emitter).isAlwaysReject(b.layout) {
+			if c.and {
+				b.emitJump(onMiss)
+				return
+			}
+			continue
+		}
+		if f.(emitter).isAlwaysAccept(b.layout) {
+			if c.and {
+				continue
+			}
+			b.emitJump(onMatch)
+			return
+		}
+		if i == lastEmit {
+			f.(emitter).emit(b, onMatch, onMiss)
+		} else if c.and {
+			next := b.newLabel()
+			f.(emitter).emit(b, next, onMiss)
+			b.bind(next)
+		} else {
+			next := b.newLabel()
+			f.(emitter).emit(b, onMatch, next)
+			b.bind(next)
+		}
+	}
+}
+
+func (c composite) isAlwaysReject(layout linkLayout) bool {
+	if c.and {
+		for _, f := range c.filters {
+			if f.(emitter).isAlwaysReject(layout) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, f := range c.filters {
+		if !f.(emitter).isAlwaysReject(layout) {
+			return false
+		}
+	}
+	return true
+}
+
+func (c composite) isAlwaysAccept(layout linkLayout) bool {
+	if c.and {
+		for _, f := range c.filters {
+			if !f.(emitter).isAlwaysAccept(layout) {
+				return false
+			}
+		}
+		return true
+	}
+	for _, f := range c.filters {
+		if f.(emitter).isAlwaysAccept(layout) {
+			return true
+		}
+	}
+	return false
+}
+
 func (c composite) Equal(o Filter) bool {
 	if o == nil {
 		return false
