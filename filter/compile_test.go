@@ -223,6 +223,71 @@ func TestExpressionNextDirectionalQualifier(t *testing.T) {
 	}
 }
 
+func TestExpressionDirectionalQualifierLookahead(t *testing.T) {
+	tests := []struct {
+		expression string
+		first      primitive
+		joiner     bool
+		last       primitive
+	}{
+		{
+			expression: "src and dst host 192.0.2.1 or udp",
+			first: primitive{
+				direction: filterDirectionSrcAndDst,
+				kind:      filterKindHost,
+				id:        "192.0.2.1",
+			},
+			joiner: false,
+			last:   primitive{subProtocol: filterSubProtocolUDP},
+		},
+		{
+			expression: "src or dst port 53 and tcp",
+			first: primitive{
+				direction: filterDirectionSrcOrDst,
+				kind:      filterKindPort,
+				id:        "53",
+			},
+			joiner: true,
+			last:   primitive{subProtocol: filterSubProtocolTCP},
+		},
+		{
+			expression: "src\tand\n dst host 198.51.100.1 or ip6",
+			first: primitive{
+				direction: filterDirectionSrcAndDst,
+				kind:      filterKindHost,
+				id:        "198.51.100.1",
+			},
+			joiner: false,
+			last:   primitive{protocol: filterProtocolIP6},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.expression, func(t *testing.T) {
+			e := NewExpression(tt.expression)
+
+			first, ok := e.Next().(primitive)
+			if !ok || !first.Equal(tt.first) {
+				t.Fatalf("first primitive = %#v, want %#v", first, tt.first)
+			}
+
+			joiner, ok := e.Next().(*and)
+			if !ok || bool(*joiner) != tt.joiner {
+				t.Fatalf("joiner = %#v, want %v", joiner, tt.joiner)
+			}
+
+			last, ok := e.Next().(primitive)
+			if !ok || !last.Equal(tt.last) {
+				t.Fatalf("last primitive = %#v, want %#v", last, tt.last)
+			}
+
+			if extra := e.Next(); extra != nil {
+				t.Fatalf("unexpected extra element %#v", extra)
+			}
+		})
+	}
+}
+
 func TestExpressionCompile(t *testing.T) {
 	for k, v := range testCasesExpressionFilterInstructions {
 		t.Run(k, func(t *testing.T) {
