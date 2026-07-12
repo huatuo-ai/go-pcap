@@ -16,6 +16,7 @@ package filter
 
 import (
 	"errors"
+	"fmt"
 
 	"golang.org/x/net/bpf"
 )
@@ -107,4 +108,16 @@ func (r rawLayout) genLinkType(proto uint32, st, sf uint8) bpf.Instruction {
 		versionNibble = 0xF0
 	}
 	return bpf.JumpIf{Cond: bpf.JumpEqual, Val: versionNibble, SkipTrue: st, SkipFalse: sf}
+}
+
+// layoutFor returns the linkLayout for lt.
+func layoutFor(lt LinkType) (linkLayout, error) {
+	switch lt {
+	case LinkTypeEthernet:
+		return ethernetLayout{}, nil
+	case LinkTypeRaw:
+		return rawLayout{}, nil
+	default:
+		return nil, fmt.Errorf("%w: %d", ErrUnsupportedLinkType, lt)
+	}
 }
