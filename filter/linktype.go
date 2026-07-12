@@ -78,3 +78,33 @@ func (e ethernetLayout) linkCompareSize() uint8 { return 1 }
 func (e ethernetLayout) genLinkType(proto uint32, st, sf uint8) bpf.Instruction {
 	return bpf.JumpIf{Cond: bpf.JumpEqual, Val: proto, SkipTrue: st, SkipFalse: sf}
 }
+
+// rawLayout implements linkLayout for DLT_RAW.
+type rawLayout struct{}
+
+func (r rawLayout) l3Off() uint32          { return 0 }
+func (r rawLayout) linkProbeSize() uint8   { return 2 }
+func (r rawLayout) linkCompareSize() uint8 { return 1 }
+func (r rawLayout) hasL2Protocols() bool   { return false }
+
+func (r rawLayout) genLinkProbe() []bpf.Instruction {
+	return []bpf.Instruction{
+		bpf.LoadAbsolute{Off: 0, Size: 1},
+		bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: 0xF0},
+	}
+}
+
+func (r rawLayout) genLinkType(proto uint32, st, sf uint8) bpf.Instruction {
+	// Map ethertype to IP version nibble (libpcap DLT_RAW behavior).
+	// L2-only protocols map to 0xF0 which never matches.
+	var versionNibble uint32
+	switch proto {
+	case etherTypeIPv4:
+		versionNibble = 0x40
+	case etherTypeIPv6:
+		versionNibble = 0x60
+	default:
+		versionNibble = 0xF0
+	}
+	return bpf.JumpIf{Cond: bpf.JumpEqual, Val: versionNibble, SkipTrue: st, SkipFalse: sf}
+}
