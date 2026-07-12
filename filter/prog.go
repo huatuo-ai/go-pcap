@@ -15,6 +15,8 @@
 package filter
 
 import (
+	"fmt"
+
 	"golang.org/x/net/bpf"
 )
 
@@ -40,4 +42,44 @@ type pendingInst struct {
 	kind    instKind
 	targetT labelID
 	targetF labelID
+}
+
+// prog is a two-pass cBPF assembler: emit records instructions with symbolic
+// label targets; finalize resolves labels to relative skip offsets.
+type prog struct {
+	layout linkLayout
+	insts  []pendingInst
+	labels map[labelID]int
+	next   labelID
+	done   bool
+}
+
+func newProg(layout linkLayout) *prog {
+	return &prog{layout: layout, labels: make(map[labelID]int)}
+}
+
+func (p *prog) newLabel() labelID {
+	l := p.next
+	p.next++
+	return l
+}
+
+func (p *prog) bind(l labelID) {
+	if l == labelKeep || l == labelFail || l == labelInvalid {
+		panic(fmt.Sprintf("prog: bind of reserved label %d", l))
+	}
+	if _, ok := p.labels[l]; ok {
+		panic(fmt.Sprintf("prog: duplicate bind for label %d", l))
+	}
+	p.labels[l] = len(p.insts)
+}
+
+func (p *prog) emit(in ...bpf.Instruction) {
+	for _, v := range in {
+		switch v.(type) {
+		case bpf.Jump, bpf.JumpIf, bpf.JumpIfX:
+			panic("prog: emit received jump instruction; use emitJump/emitJumpIf/emitJumpIfX")
+		}
+		p.insts = append(p.insts, pendingInst{inst: v, kind: instPlain, targetT: labelInvalid, targetF: labelInvalid})
+	}
 }
