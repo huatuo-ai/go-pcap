@@ -27,9 +27,16 @@ const (
 	etherTypeArp  uint32 = 0x806
 	etherTypeRarp uint32 = 0x8035
 
-	ipProtocolTCP  uint32 = 0x06
-	ipProtocolUDP  uint32 = 0x11
-	ipProtocolSctp uint32 = 0x84
+	ipProtocolTCP   uint32 = 0x06
+	ipProtocolUDP   uint32 = 0x11
+	ipProtocolSctp  uint32 = 0x84
+	ipProtocolIcmp  uint32 = 0x01
+	ipProtocolIgmp  uint32 = 0x02
+	ipProtocolIcmp6 uint32 = 0x3a
+	ipProtocolEsp   uint32 = 0x32
+	ipProtocolAh    uint32 = 0x33
+	ipProtocolPim   uint32 = 0x67
+	ipProtocolVrrp  uint32 = 0x70
 
 	ip6ContinuationPacket uint32 = 0x2c
 
