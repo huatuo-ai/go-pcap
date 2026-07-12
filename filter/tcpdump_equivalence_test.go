@@ -90,14 +90,95 @@ func TestTCPDumpGoldenDecisionEquivalence(t *testing.T) {
 		packets []string
 	}{
 		{
+			name:    "ethernet icmp",
+			link:    LinkTypeEthernet,
+			fixture: "en10mb_icmp.ddd",
+			packets: []string{
+				"ip4-icmp", "ip4-tcp-80", "ip4-udp-53", "ip6-icmp6", "arp-request",
+			},
+			expr: "icmp",
+		},
+		{
+			name:    "ethernet tcp port",
+			link:    LinkTypeEthernet,
+			fixture: "en10mb_tcp_and_port_80.ddd",
+			packets: []string{
+				"ip4-tcp-80", "ip4-tcp-443", "ip4-udp-53", "ip6-tcp-80", "ip6-tcp-443",
+			},
+			expr: "tcp and port 80",
+		},
+		{
+			name:    "ethernet udp port",
+			link:    LinkTypeEthernet,
+			fixture: "en10mb_udp_and_port_53.ddd",
+			packets: []string{
+				"ip4-udp-53", "ip4-tcp-80", "ip4-icmp", "ip6-udp-53", "ip6-tcp-80",
+			},
+			expr: "udp and port 53",
+		},
+		{
+			name:    "ethernet arp",
+			link:    LinkTypeEthernet,
+			fixture: "en10mb_arp.ddd",
+			packets: []string{
+				"arp-request", "rarp-request", "ip4-tcp-80", "ip6-udp-53",
+			},
+			expr: "arp",
+		},
+		{
+			name:    "ethernet ip",
+			link:    LinkTypeEthernet,
+			fixture: "en10mb_ip.ddd",
+			packets: []string{
+				"ip4-tcp-80", "ip4-udp-53", "ip4-icmp", "ip6-udp-53", "arp-request",
+			},
+			expr: "ip",
+		},
+		{
+			name:    "ethernet ip6",
+			link:    LinkTypeEthernet,
+			fixture: "en10mb_ip6.ddd",
+			packets: []string{
+				"ip6-udp-53", "ip6-tcp-80", "ip6-icmp6", "ip4-tcp-80", "arp-request",
+			},
+			expr: "ip6",
+		},
+		{
 			name:    "ethernet",
 			link:    LinkTypeEthernet,
 			fixture: "en10mb_tcp_and_port_80_or_udp.ddd",
 			packets: []string{
 				"ip4-tcp-80", "ip4-tcp-443", "ip4-udp-53", "ip4-icmp",
-				"ip4-multicast", "ip6-udp-53", "arp-request",
+				"ip4-multicast", "ip6-udp-53", "ip6-tcp-80", "arp-request",
 			},
 			expr: "tcp and port 80 or udp",
+		},
+		{
+			name:    "ethernet tcp or udp and not icmp",
+			link:    LinkTypeEthernet,
+			fixture: "en10mb_tcp_or_udp_and_not_icmp.ddd",
+			packets: []string{
+				"ip4-tcp-80", "ip4-udp-53", "ip4-icmp", "ip6-tcp-80", "ip6-udp-53", "ip6-icmp6",
+			},
+			expr: "(tcp or udp) and not icmp",
+		},
+		{
+			name:    "ethernet not tcp or udp",
+			link:    LinkTypeEthernet,
+			fixture: "en10mb_not_tcp_or_udp.ddd",
+			packets: []string{
+				"ip4-tcp-80", "ip4-udp-53", "ip4-icmp", "ip6-tcp-80", "ip6-udp-53", "ip6-icmp6", "arp-request",
+			},
+			expr: "not (tcp or udp)",
+		},
+		{
+			name:    "ethernet host and tcp",
+			link:    LinkTypeEthernet,
+			fixture: "en10mb_host_10_0_0_1_and_tcp.ddd",
+			packets: []string{
+				"ip4-tcp-80", "ip4-tcp-443", "ip4-self-udp", "ip4-udp-53", "arp-request",
+			},
+			expr: "host 10.0.0.1 and tcp",
 		},
 		{
 			name:    "ethernet host and multicast",
@@ -122,18 +203,99 @@ func TestTCPDumpGoldenDecisionEquivalence(t *testing.T) {
 			link:    LinkTypeRaw,
 			fixture: "raw_tcp_and_port_80_or_udp.ddd",
 			packets: []string{
-				"ip4-tcp-80", "ip4-tcp-443", "ip4-udp-53", "ip4-icmp", "ip4-multicast", "ip6-udp-53",
+				"ip4-tcp-80", "ip4-tcp-443", "ip4-udp-53", "ip4-icmp", "ip4-multicast", "ip6-udp-53", "ip6-tcp-80",
 			},
 			expr: "tcp and port 80 or udp",
+		},
+		{
+			name:    "raw icmp",
+			link:    LinkTypeRaw,
+			fixture: "raw_icmp.ddd",
+			packets: []string{
+				"ip4-icmp", "ip4-tcp-80", "ip4-udp-53", "ip6-icmp6",
+			},
+			expr: "icmp",
+		},
+		{
+			name:    "raw tcp port",
+			link:    LinkTypeRaw,
+			fixture: "raw_tcp_and_port_80.ddd",
+			packets: []string{
+				"ip4-tcp-80", "ip4-tcp-443", "ip4-udp-53", "ip6-tcp-80", "ip6-tcp-443",
+			},
+			expr: "tcp and port 80",
+		},
+		{
+			name:    "raw udp port",
+			link:    LinkTypeRaw,
+			fixture: "raw_udp_and_port_53.ddd",
+			packets: []string{
+				"ip4-udp-53", "ip4-tcp-80", "ip4-icmp", "ip6-udp-53", "ip6-tcp-80",
+			},
+			expr: "udp and port 53",
+		},
+		{
+			name:    "raw ip",
+			link:    LinkTypeRaw,
+			fixture: "raw_ip.ddd",
+			packets: []string{
+				"ip4-tcp-80", "ip4-udp-53", "ip4-icmp", "ip6-udp-53",
+			},
+			expr: "ip",
+		},
+		{
+			name:    "raw ip6",
+			link:    LinkTypeRaw,
+			fixture: "raw_ip6.ddd",
+			packets: []string{
+				"ip6-udp-53", "ip6-tcp-80", "ip6-icmp6", "ip4-tcp-80",
+			},
+			expr: "ip6",
 		},
 		{
 			name:    "raw IPv6",
 			link:    LinkTypeRaw,
 			fixture: "raw_ip6_and_udp_and_port_53.ddd",
 			packets: []string{
-				"ip4-tcp-80", "ip4-udp-53", "ip4-icmp", "ip6-udp-53",
+				"ip4-tcp-80", "ip4-udp-53", "ip4-icmp", "ip6-udp-53", "ip6-tcp-80",
 			},
 			expr: "ip6 and udp and port 53",
+		},
+		{
+			name:    "raw negation",
+			link:    LinkTypeRaw,
+			fixture: "raw_not_tcp.ddd",
+			packets: []string{
+				"ip4-tcp-80", "ip4-udp-53", "ip4-icmp", "ip6-tcp-80", "ip6-udp-53",
+			},
+			expr: "not tcp",
+		},
+		{
+			name:    "raw tcp or udp and not icmp",
+			link:    LinkTypeRaw,
+			fixture: "raw_tcp_or_udp_and_not_icmp.ddd",
+			packets: []string{
+				"ip4-tcp-80", "ip4-udp-53", "ip4-icmp", "ip6-tcp-80", "ip6-udp-53", "ip6-icmp6",
+			},
+			expr: "(tcp or udp) and not icmp",
+		},
+		{
+			name:    "raw not tcp or udp",
+			link:    LinkTypeRaw,
+			fixture: "raw_not_tcp_or_udp.ddd",
+			packets: []string{
+				"ip4-tcp-80", "ip4-udp-53", "ip4-icmp", "ip6-tcp-80", "ip6-udp-53", "ip6-icmp6",
+			},
+			expr: "not (tcp or udp)",
+		},
+		{
+			name:    "raw host and tcp",
+			link:    LinkTypeRaw,
+			fixture: "raw_host_10_0_0_1_and_tcp.ddd",
+			packets: []string{
+				"ip4-tcp-80", "ip4-tcp-443", "ip4-self-udp", "ip4-udp-53",
+			},
+			expr: "host 10.0.0.1 and tcp",
 		},
 	}
 

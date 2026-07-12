@@ -228,9 +228,12 @@ func compareInstructions(a, b []bpf.Instruction) bool {
 func TestExpressionCompilePrecedence(t *testing.T) {
 	tcp := primitive{direction: filterDirectionSrcOrDst, subProtocol: filterSubProtocolTCP}
 	udp := primitive{direction: filterDirectionSrcOrDst, subProtocol: filterSubProtocolUDP}
+	tcpNot := primitive{direction: filterDirectionSrcOrDst, subProtocol: filterSubProtocolTCP, negator: true}
 	udpNot := primitive{direction: filterDirectionSrcOrDst, subProtocol: filterSubProtocolUDP, negator: true}
 	ipMulticast := primitive{direction: filterDirectionSrcOrDst, kind: filterKindMulticast, protocol: filterProtocolIP}
 	port80 := primitive{direction: filterDirectionSrcOrDst, kind: filterKindPort, id: "80"}
+	dstPort80 := primitive{direction: filterDirectionDst, kind: filterKindPort, id: "80"}
+	srcHost := primitive{direction: filterDirectionSrc, kind: filterKindHost, id: "10.0.0.1"}
 	icmp := primitive{direction: filterDirectionSrcOrDst, subProtocol: filterSubProtocolIcmp}
 	igmp := primitive{direction: filterDirectionSrcOrDst, subProtocol: filterSubProtocolIgmp}
 
@@ -281,6 +284,39 @@ func TestExpressionCompilePrecedence(t *testing.T) {
 				composite{and: true, filters: Filters{udp, icmp}},
 				igmp,
 			},
+		}},
+		// exact smaller form of the same precedence rule: tcp or (udp and icmp).
+		{"tcp or udp and icmp", composite{
+			and: false,
+			filters: Filters{
+				tcp,
+				composite{and: true, filters: Filters{udp, icmp}},
+			},
+		}},
+		// "and" binds before the trailing or: (tcp and udp) or icmp.
+		{"tcp and udp or icmp", composite{
+			and: false,
+			filters: Filters{
+				composite{and: true, filters: Filters{tcp, udp}},
+				icmp,
+			},
+		}},
+		// Negation applies to the adjacent primitive before the and run.
+		{"not tcp and udp", composite{
+			and: true,
+			filters: Filters{
+				udp,
+				negated{inner: tcpNot},
+			},
+		}},
+		// Negation of a parenthesized expression keeps the grouped inner tree.
+		{"not (tcp or udp)", negated{
+			inner: composite{and: false, filters: Filters{tcp, udp}},
+		}},
+		// Directional primitives with different kinds remain a composite and-run.
+		{"src host 10.0.0.1 and dst port 80", composite{
+			and:     true,
+			filters: Filters{srcHost, dstPort80},
 		}},
 		// a pure multi-term and-run stays a single and-group.
 		{"tcp and udp and icmp", composite{

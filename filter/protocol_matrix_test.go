@@ -77,6 +77,12 @@ func TestProtocolPrimitiveMatrix(t *testing.T) {
 		packet []byte
 		want   bool
 	}{
+		{"tcp accepts IPv4", "tcp", rawIPv4Protocol(byte(ipProtocolTCP)), true},
+		{"tcp accepts IPv6", "tcp", rawIPv6Protocol(byte(ipProtocolTCP)), true},
+		{"tcp rejects UDP", "tcp", rawIPv4Protocol(byte(ipProtocolUDP)), false},
+		{"udp accepts IPv4", "udp", rawIPv4Protocol(byte(ipProtocolUDP)), true},
+		{"udp accepts IPv6", "udp", rawIPv6Protocol(byte(ipProtocolUDP)), true},
+		{"udp rejects TCP", "udp", rawIPv4Protocol(byte(ipProtocolTCP)), false},
 		{"icmp accepts IPv4 ICMP", "icmp", rawIPv4Protocol(byte(ipProtocolIcmp)), true},
 		{"icmp rejects IPv6 ICMP", "icmp", rawIPv6Protocol(byte(ipProtocolIcmp6)), false},
 		{"icmp6 accepts IPv6", "icmp6", rawIPv6Protocol(byte(ipProtocolIcmp6)), true},
@@ -93,6 +99,8 @@ func TestProtocolPrimitiveMatrix(t *testing.T) {
 		{"vrrp accepts IPv6", "vrrp", rawIPv6Protocol(byte(ipProtocolVrrp)), true},
 		{"UDP follows IPv6 continuation header", "udp", fragmentUDP, true},
 		{"bare IPv4 rejects IPv6", "ip", ip6, false},
+		{"bare IPv4 accepts IPv4", "ip", ip4, true},
+		{"bare IPv6 accepts IPv6", "ip6", ip6, true},
 		{"bare IPv6 rejects IPv4", "ip6", ip4, false},
 	}
 
@@ -110,8 +118,24 @@ func TestProtocolPrimitiveMatrix(t *testing.T) {
 		packet []byte
 		want   bool
 	}{
+		{"ip IPv4", "ip", ethernetProtocolFrame(uint16(etherTypeIPv4), rawIPv4Protocol(byte(ipProtocolTCP))), true},
+		{"ip rejects IPv6", "ip", ethernetProtocolFrame(uint16(etherTypeIPv6), rawIPv6Protocol(byte(ipProtocolTCP))), false},
+		{"ip6 IPv6", "ip6", ethernetProtocolFrame(uint16(etherTypeIPv6), rawIPv6Protocol(byte(ipProtocolTCP))), true},
+		{"ip6 rejects IPv4", "ip6", ethernetProtocolFrame(uint16(etherTypeIPv4), rawIPv4Protocol(byte(ipProtocolTCP))), false},
+		{"tcp IPv4", "tcp", ethernetProtocolFrame(uint16(etherTypeIPv4), rawIPv4Protocol(byte(ipProtocolTCP))), true},
+		{"tcp IPv6", "tcp", ethernetProtocolFrame(uint16(etherTypeIPv6), rawIPv6Protocol(byte(ipProtocolTCP))), true},
+		{"tcp rejects UDP", "tcp", ethernetProtocolFrame(uint16(etherTypeIPv4), rawIPv4Protocol(byte(ipProtocolUDP))), false},
+		{"udp IPv4", "udp", ethernetProtocolFrame(uint16(etherTypeIPv4), rawIPv4Protocol(byte(ipProtocolUDP))), true},
+		{"udp IPv6", "udp", ethernetProtocolFrame(uint16(etherTypeIPv6), rawIPv6Protocol(byte(ipProtocolUDP))), true},
+		{"udp rejects TCP", "udp", ethernetProtocolFrame(uint16(etherTypeIPv4), rawIPv4Protocol(byte(ipProtocolTCP))), false},
+		{"arp", "arp", ethernetProtocolFrame(uint16(etherTypeArp), make([]byte, 28)), true},
+		{"arp rejects rarp", "arp", ethernetProtocolFrame(uint16(etherTypeRarp), make([]byte, 28)), false},
+		{"rarp", "rarp", ethernetProtocolFrame(uint16(etherTypeRarp), make([]byte, 28)), true},
+		{"rarp rejects arp", "rarp", ethernetProtocolFrame(uint16(etherTypeArp), make([]byte, 28)), false},
 		{"icmp IPv4", "icmp", ethernetProtocolFrame(uint16(etherTypeIPv4), rawIPv4Protocol(byte(ipProtocolIcmp))), true},
+		{"icmp rejects IPv6", "icmp", ethernetProtocolFrame(uint16(etherTypeIPv6), rawIPv6Protocol(byte(ipProtocolIcmp6))), false},
 		{"icmp6 IPv6", "icmp6", ethernetProtocolFrame(uint16(etherTypeIPv6), rawIPv6Protocol(byte(ipProtocolIcmp6))), true},
+		{"icmp6 rejects IPv4", "icmp6", ethernetProtocolFrame(uint16(etherTypeIPv4), rawIPv4Protocol(byte(ipProtocolIcmp))), false},
 		{"PIM IPv4", "pim", ethernetProtocolFrame(uint16(etherTypeIPv4), rawIPv4Protocol(byte(ipProtocolPim))), true},
 		{"ESP IPv6", "esp", ethernetProtocolFrame(uint16(etherTypeIPv6), rawIPv6Protocol(byte(ipProtocolEsp))), true},
 		{"AH IPv4", "ah", ethernetProtocolFrame(uint16(etherTypeIPv4), rawIPv4Protocol(byte(ipProtocolAh))), true},
