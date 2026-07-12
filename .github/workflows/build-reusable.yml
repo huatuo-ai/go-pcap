@@ -58,11 +58,12 @@ jobs:
       run: |
         binary=dist/pcap-${{ matrix.target }}
         test -f "$binary"
-        go version -m "$binary"
-        go version -m "$binary" | grep -Eq 'build[[:space:]]+GOOS=${{ matrix.os }}'
-        go version -m "$binary" | grep -Eq 'build[[:space:]]+GOARCH=${{ matrix.arch }}'
+        metadata="$(go version -m "$binary")"
+        printf '%s\n' "$metadata"
+        grep -Eq 'build[[:space:]]+GOOS=${{ matrix.os }}' <<<"$metadata"
+        grep -Eq 'build[[:space:]]+GOARCH=${{ matrix.arch }}' <<<"$metadata"
         if [ -n '${{ matrix.arm }}' ]; then
-          go version -m "$binary" | grep -Eq 'build[[:space:]]+GOARM=${{ matrix.arm }}'
+          grep -Eq 'build[[:space:]]+GOARM=${{ matrix.arm }}' <<<"$metadata"
         fi
     - uses: actions/upload-artifact@v4
       with:
