@@ -449,6 +449,24 @@ func (p primitive) isAlwaysReject(layout linkLayout) bool {
 // isAlwaysAccept always returns false.
 func (p primitive) isAlwaysAccept(layout linkLayout) bool { return false }
 
+// emit generates instructions for this primitive, branching to onMatch when
+// the filter matches and onMiss when it does not. Negation is handled
+// externally by the negated wrapper which swaps onMatch/onMiss before calling emit.
+func (p primitive) emit(b *prog, onMatch, onMiss labelID) {
+	switch p.kind {
+	case filterKindHost:
+		p.emitHost(b, onMatch, onMiss)
+	case filterKindPort:
+		p.emitPort(b, onMatch, onMiss)
+	case filterKindNet:
+		p.emitNet(b, onMatch, onMiss)
+	case filterKindMulticast:
+		p.emitMulticast(b, onMatch, onMiss)
+	case filterKindUnset:
+		p.emitUnset(b, onMatch, onMiss)
+	}
+}
+
 func (p primitive) emitHost(b *prog, onMatch, onMiss labelID) {
 	switch p.protocol {
 	case filterProtocolEther:
