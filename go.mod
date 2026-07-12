@@ -1,4 +1,4 @@
-module github.com/packetcap/go-pcap
+module github.com/huatuo-ai/go-pcap
 
 go 1.23.0
 

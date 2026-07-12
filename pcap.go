@@ -12,7 +12,7 @@ import (
 	"github.com/gopacket/gopacket"
 	"golang.org/x/net/bpf"
 
-	"github.com/packetcap/go-pcap/filter"
+	"github.com/huatuo-ai/go-pcap/filter"
 )
 
 const (

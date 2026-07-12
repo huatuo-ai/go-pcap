@@ -11,7 +11,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
-	"github.com/packetcap/go-pcap"
+	"github.com/huatuo-ai/go-pcap"
 )
 
 var (
