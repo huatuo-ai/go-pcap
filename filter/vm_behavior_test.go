@@ -23,7 +23,7 @@ import (
 	"golang.org/x/net/bpf"
 )
 
-func serializeBehaviorPacket(t *testing.T, parts ...gopacket.SerializableLayer) []byte {
+func serializeBehaviorPacket(t testing.TB, parts ...gopacket.SerializableLayer) []byte {
 	t.Helper()
 	buf := gopacket.NewSerializeBuffer()
 	opts := gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: false}
@@ -33,7 +33,7 @@ func serializeBehaviorPacket(t *testing.T, parts ...gopacket.SerializableLayer) 
 	return buf.Bytes()
 }
 
-func behaviorPacketCorpus(t *testing.T) map[string][]byte {
+func behaviorPacketCorpus(t testing.TB) map[string][]byte {
 	t.Helper()
 	srcMAC, _ := net.ParseMAC("aa:bb:cc:dd:ee:ff")
 	dstMAC, _ := net.ParseMAC("11:22:33:44:55:66")
@@ -92,7 +92,7 @@ func behaviorPacketCorpus(t *testing.T) map[string][]byte {
 	}
 }
 
-func rawBehaviorPacket(t *testing.T, ethernetPacket []byte) []byte {
+func rawBehaviorPacket(t testing.TB, ethernetPacket []byte) []byte {
 	t.Helper()
 	if len(ethernetPacket) < 14 {
 		t.Fatalf("packet is shorter than an ethernet header: %d", len(ethernetPacket))
