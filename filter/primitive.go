@@ -208,7 +208,7 @@ func (p primitive) Compile() ([]bpf.Instruction, error) {
 		switch p.protocol {
 		case filterProtocolIP6:
 			inst.append(compareProtocolIP6(0, inst.skipToFail()))
-			inst.append(loadIPv6Protocol)
+			inst.append(legacyLoadIPv6Protocol)
 			switch p.subProtocol {
 			case filterSubProtocolTCP:
 				inst.append(compareIPv6Protocol(ipProtocolTCP, 0, inst.skipToFail())...)
@@ -225,7 +225,7 @@ func (p primitive) Compile() ([]bpf.Instruction, error) {
 			inst.append(checkPorts(p.direction, port, inst.skipToFail(), inst.skipToSucceed(), true)...)
 		case filterProtocolIP:
 			inst.append(compareProtocolIP4(0, inst.skipToFail()))
-			inst.append(loadIPv4Protocol)
+			inst.append(legacyLoadIPv4Protocol)
 			switch p.subProtocol {
 			case filterSubProtocolTCP:
 				inst.append(compareSubProtocolTCP(0, inst.skipToFail()))
@@ -253,7 +253,7 @@ func (p primitive) Compile() ([]bpf.Instruction, error) {
 				steps += 2
 			}
 			inst.append(compareProtocolIP6(0, steps))
-			inst.append(loadIPv6Protocol)
+			inst.append(legacyLoadIPv6Protocol)
 
 			/* TODO: FIX HERE
 			switch p.subProtocol {
@@ -284,7 +284,7 @@ func (p primitive) Compile() ([]bpf.Instruction, error) {
 			}
 			inst.append(checkPorts(p.direction, port, inst.skipToFail(), inst.skipToSucceed(), true)...)
 			inst.append(compareProtocolIP4(0, inst.skipToFail()))
-			inst.append(loadIPv4Protocol)
+			inst.append(legacyLoadIPv4Protocol)
 			switch p.subProtocol {
 			case filterSubProtocolTCP:
 				inst.append(compareSubProtocolTCP(0, inst.skipToFail()))
@@ -357,7 +357,7 @@ func (p primitive) Compile() ([]bpf.Instruction, error) {
 		switch p.protocol {
 		case filterProtocolIP:
 			inst.append(compareProtocolIP4(0, inst.skipToFail()))
-			inst.append(loadIPv4Protocol)
+			inst.append(legacyLoadIPv4Protocol)
 			switch p.subProtocol {
 			case filterSubProtocolTCP:
 				inst.append(compareSubProtocolTCP(0, inst.skipToFail()))

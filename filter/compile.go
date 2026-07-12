@@ -23,31 +23,32 @@ import (
 	"golang.org/x/net/bpf"
 )
 
-// Compile take a filter string compatible with tcpdump at
-// https://www.tcpdump.org/manpages/pcap-filter.7.html and return
-// bpf instructions
+var (
+	ip4MaskFull = net.CIDRMask(32, 32)
+	ip6MaskFull = net.CIDRMask(128, 128)
+	returnDrop  = bpf.RetConstant{Val: 0}
+	returnKeep  = bpf.RetConstant{Val: 0x40000}
+)
+
+// =============================================================================
+// Legacy fixed-offset code generation. Everything below this banner assumes
+// Ethernet framing and hand-counted skip offsets; it is being replaced by the
+// layout-aware *prog builder methods and removed once all callers migrate.
+// =============================================================================
 
 var (
-	ip4MaskFull                  = net.CIDRMask(32, 32)   //[]byte{0xff, 0xff, 0xff, 0xff}
-	ip6MaskFull                  = net.CIDRMask(128, 128) //[]byte{0xff, 0xff, 0xff, 0xff,0xff, 0xff, 0xff, 0xff,0xff, 0xff, 0xff, 0xff,0xff, 0xff, 0xff, 0xff}
-	returnDrop                   = bpf.RetConstant{Val: 0}
-	returnKeep                   = bpf.RetConstant{Val: 0x40000}
-	loadIPv4SourcePort           = bpf.LoadIndirect{Off: ip4SourcePort, Size: lengthHalf}
-	loadIPv4DestinationPort      = bpf.LoadIndirect{Off: ip4DestinationPort, Size: lengthHalf}
-	loadIPv6SourcePort           = bpf.LoadAbsolute{Off: ip6SourcePort, Size: lengthHalf}
-	loadIPv6DestinationPort      = bpf.LoadAbsolute{Off: ip6DestinationPort, Size: lengthHalf}
-	loadEtherKind                = bpf.LoadAbsolute{Off: 12, Size: lengthHalf}
-	loadIPv4SourceAddress        = bpf.LoadAbsolute{Off: 26, Size: lengthWord}
-	loadIPv4DestinationAddress   = bpf.LoadAbsolute{Off: 30, Size: lengthWord}
-	loadArpSenderAddress         = bpf.LoadAbsolute{Off: 28, Size: lengthWord}
-	loadArpTargetAddress         = bpf.LoadAbsolute{Off: 38, Size: lengthWord}
-	loadIPv4Protocol             = bpf.LoadAbsolute{Off: 23, Size: lengthByte}
-	loadIPv6Protocol             = bpf.LoadAbsolute{Off: 20, Size: lengthByte}
-	loadIPv6ContinuationProtocol = bpf.LoadAbsolute{Off: 54, Size: lengthByte}
-	loadEthernetSourceFirst      = bpf.LoadAbsolute{Off: 6, Size: lengthHalf}
-	loadEthernetSourceLast       = bpf.LoadAbsolute{Off: 8, Size: lengthWord}
-	loadEthernetDestinationFirst = bpf.LoadAbsolute{Off: 0, Size: lengthHalf}
-	loadEthernetDestinationLast  = bpf.LoadAbsolute{Off: 2, Size: lengthWord}
+	legacyLoadIPv4SourcePort           = bpf.LoadIndirect{Off: ip4SourcePort, Size: lengthHalf}
+	legacyLoadIPv4DestinationPort      = bpf.LoadIndirect{Off: ip4DestinationPort, Size: lengthHalf}
+	legacyLoadIPv6SourcePort           = bpf.LoadAbsolute{Off: ip6SourcePort, Size: lengthHalf}
+	legacyLoadIPv6DestinationPort      = bpf.LoadAbsolute{Off: ip6DestinationPort, Size: lengthHalf}
+	loadEtherKind                      = bpf.LoadAbsolute{Off: 12, Size: lengthHalf}
+	legacyLoadIPv4SourceAddress        = bpf.LoadAbsolute{Off: 26, Size: lengthWord}
+	legacyLoadIPv4DestinationAddress   = bpf.LoadAbsolute{Off: 30, Size: lengthWord}
+	legacyLoadArpSenderAddress         = bpf.LoadAbsolute{Off: 28, Size: lengthWord}
+	legacyLoadArpTargetAddress         = bpf.LoadAbsolute{Off: 38, Size: lengthWord}
+	legacyLoadIPv4Protocol             = bpf.LoadAbsolute{Off: 23, Size: lengthByte}
+	legacyLoadIPv6Protocol             = bpf.LoadAbsolute{Off: 20, Size: lengthByte}
+	legacyLoadIPv6ContinuationProtocol = bpf.LoadAbsolute{Off: 54, Size: lengthByte}
 )
 
 func loadIPv4HeaderOffset(skipFail uint8) []bpf.Instruction {
@@ -95,10 +96,10 @@ func compareIPv6Protocol(proto uint32, skipTrue, skipFalse uint8) []bpf.Instruct
 		sf = 4
 	}
 	return []bpf.Instruction{
-		loadIPv6Protocol,
+		legacyLoadIPv6Protocol,
 		bpf.JumpIf{Cond: bpf.JumpEqual, Val: proto, SkipFalse: 0, SkipTrue: st - 1},
 		bpf.JumpIf{Cond: bpf.JumpEqual, Val: ip6ContinuationPacket, SkipFalse: sf - 2},
-		loadIPv6ContinuationProtocol,
+		legacyLoadIPv6ContinuationProtocol,
 		bpf.JumpIf{Cond: bpf.JumpEqual, Val: proto, SkipFalse: sf - 4, SkipTrue: st - 4},
 	}
 }
@@ -112,7 +113,7 @@ func compareIPv4Protocol(proto uint32, skipTrue, skipFalse uint8) []bpf.Instruct
 		sf = 1
 	}
 	return []bpf.Instruction{
-		loadIPv4Protocol,
+		legacyLoadIPv4Protocol,
 		bpf.JumpIf{Cond: bpf.JumpEqual, Val: proto, SkipFalse: sf - 1, SkipTrue: st - 1},
 	}
 }
@@ -166,12 +167,12 @@ func checkEtherAddresses(direction filterDirection, addr string, fail, succeed u
 
 // checkIP4HostAddresses check for host addresses
 func checkIP4HostAddresses(direction filterDirection, addr net.IP, fail, succeed uint8) []bpf.Instruction {
-	return checkIP4Addresses(direction, addr, nil, fail, succeed, loadIPv4SourceAddress, loadIPv4DestinationAddress)
+	return checkIP4Addresses(direction, addr, nil, fail, succeed, legacyLoadIPv4SourceAddress, legacyLoadIPv4DestinationAddress)
 }
 
 // checkIP4ArpAddresses check for arp addresses
 func checkIP4ArpAddresses(direction filterDirection, addr net.IP, fail, succeed uint8) []bpf.Instruction {
-	return checkIP4Addresses(direction, addr, nil, fail, succeed, loadArpSenderAddress, loadArpTargetAddress)
+	return checkIP4Addresses(direction, addr, nil, fail, succeed, legacyLoadArpSenderAddress, legacyLoadArpTargetAddress)
 }
 
 func checkIP4NetAddresses(direction filterDirection, addr string, ip bool, fail, succeed uint8) []bpf.Instruction {
@@ -185,9 +186,9 @@ func checkIP4NetAddresses(direction filterDirection, addr string, ip bool, fail,
 	if !bytes.Equal(network.Mask, ip4MaskFull) {
 		maskCheck = &bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: binary.BigEndian.Uint32(network.Mask)}
 	}
-	loadSource, loadDestination := loadIPv4SourceAddress, loadIPv4DestinationAddress
+	loadSource, loadDestination := legacyLoadIPv4SourceAddress, legacyLoadIPv4DestinationAddress
 	if !ip {
-		loadSource, loadDestination = loadArpSenderAddress, loadArpTargetAddress
+		loadSource, loadDestination = legacyLoadArpSenderAddress, legacyLoadArpTargetAddress
 	}
 	return checkIP4Addresses(direction, addrBytes, maskCheck, fail, succeed, loadSource, loadDestination)
 }
@@ -296,11 +297,11 @@ func checkPorts(direction filterDirection, port uint32, fail, succeed uint8, ip6
 	)
 
 	if ip6 {
-		loadSource = loadIPv6SourcePort
-		loadDestination = loadIPv6DestinationPort
+		loadSource = legacyLoadIPv6SourcePort
+		loadDestination = legacyLoadIPv6DestinationPort
 	} else {
-		loadSource = loadIPv4SourcePort
-		loadDestination = loadIPv4DestinationPort
+		loadSource = legacyLoadIPv4SourcePort
+		loadDestination = legacyLoadIPv4DestinationPort
 		preInst := len(inst)
 		inst = append(inst, loadIPv4HeaderOffset(fail)...)
 		postInst := len(inst)
@@ -333,31 +334,6 @@ func checkPorts(direction filterDirection, port uint32, fail, succeed uint8, ip6
 
 // getNetAndMask get the address and the network with mask for an IP address.
 // If it is *not* CIDR, will return full mask, i.e. 0xffffffff
-func getNetAndMask(id string) (net.IP, *net.IPNet, error) {
-	var (
-		addr    net.IP
-		network *net.IPNet
-		mask    net.IPMask
-	)
-	if addr := net.ParseIP(id); addr != nil {
-		if addr.To4() != nil {
-			mask = ip4MaskFull
-		} else {
-			mask = ip6MaskFull
-		}
-		network = &net.IPNet{
-			IP:   addr,
-			Mask: mask,
-		}
-		return addr, network, nil
-	}
-	addr, network, err := net.ParseCIDR(id)
-	if err != nil {
-		return nil, nil, fmt.Errorf("invalid net: %s", id)
-	}
-	return addr, network, nil
-}
-
 func calculateIP6MaskSteps(mask net.IPMask) uint8 {
 	var count uint8
 	// it takes up to 8 steps to check the src or dst, depending on the netmask
@@ -463,4 +439,40 @@ func getSkipper(a, size uint8, inst []bpf.Instruction) uint8 {
 
 func getSkippers(a, b, size uint8, inst []bpf.Instruction) (uint8, uint8) {
 	return getSkipper(a, size, inst), getSkipper(b, size, inst)
+}
+
+var (
+	loadEthernetSourceFirst      = bpf.LoadAbsolute{Off: 6, Size: lengthHalf}
+	loadEthernetSourceLast       = bpf.LoadAbsolute{Off: 8, Size: lengthWord}
+	loadEthernetDestinationFirst = bpf.LoadAbsolute{Off: 0, Size: lengthHalf}
+	loadEthernetDestinationLast  = bpf.LoadAbsolute{Off: 2, Size: lengthWord}
+)
+
+// =============================================================================
+// Network/mask parsing
+// =============================================================================
+
+func getNetAndMask(id string) (net.IP, *net.IPNet, error) {
+	var (
+		addr    net.IP
+		network *net.IPNet
+		mask    net.IPMask
+	)
+	if addr := net.ParseIP(id); addr != nil {
+		if addr.To4() != nil {
+			mask = ip4MaskFull
+		} else {
+			mask = ip6MaskFull
+		}
+		network = &net.IPNet{
+			IP:   addr,
+			Mask: mask,
+		}
+		return addr, network, nil
+	}
+	addr, network, err := net.ParseCIDR(id)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid net: %s", id)
+	}
+	return addr, network, nil
 }
