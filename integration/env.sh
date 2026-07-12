@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if [[ -n "${__GO_PCAP_INTEGRATION_ENV_LOADED:-}" ]]; then
+	return 0
+fi
+export __GO_PCAP_INTEGRATION_ENV_LOADED=1
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/.."
+export ROOT_DIR
+
+GO_PCAP_BIN="${GO_PCAP_BIN:-${ROOT_DIR}/pcap}"
+export GO_PCAP_BIN
+
+GO_PCAP_TEST_TMPDIR="${GO_PCAP_TEST_TMPDIR:-$(mktemp -d /tmp/go-pcap-integration.XXXXXX)}"
+export GO_PCAP_TEST_TMPDIR
+
+GO_PCAP_CAPTURE_TIMEOUT="${GO_PCAP_CAPTURE_TIMEOUT:-5s}"
+export GO_PCAP_CAPTURE_TIMEOUT
+
+GO_PCAP_START_DELAY="${GO_PCAP_START_DELAY:-0.5}"
+export GO_PCAP_START_DELAY
+
+GO_PCAP_PING_COUNT="${GO_PCAP_PING_COUNT:-2}"
+export GO_PCAP_PING_COUNT
+
+TEST_LOG_TAG="${TEST_LOG_TAG:-GO-PCAP INTEGRATION}"
+export TEST_LOG_TAG

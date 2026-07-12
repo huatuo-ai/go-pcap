@@ -42,7 +42,7 @@ GOBINDIR ?= $(shell go env GOPATH)/bin
 LOCALBIN := $(BINDIR)/$(BIN)-$(TARGET)
 INSTALLBIN := $(GOBINDIR)/$(BIN)
 
-.PHONY: build clean fmt test bench fmt-check lint golangci-lint
+.PHONY: build clean fmt test integration bench fmt-check lint golangci-lint
 
 export GO111MODULE=on
 
@@ -86,6 +86,9 @@ lint: golangci-lint
 
 test:
 	go test ./...
+
+integration: build
+	@bash integration/run.sh
 
 bench:
 	go test ./filter -run '^$$' -bench . -benchmem -count=10
