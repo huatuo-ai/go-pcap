@@ -53,14 +53,19 @@ jobs:
         go-version-file: 'go.mod'
         cache: true
     - name: Build binaries
-      env:
-        TARGET: ${{ matrix.target }}
-        GOARCH: ${{ matrix.arch }}
-        GOOS: ${{ matrix.os }}
-        GOARM: ${{ matrix.arm }}
-      run: make build
+      run: make build OS=${{ matrix.os }} ARCH=${{ matrix.arch }} GOARM=${{ matrix.arm }} TARGET=${{ matrix.target }}
+    - name: Verify binary target metadata
+      run: |
+        binary=dist/pcap-${{ matrix.target }}
+        test -f "$binary"
+        go version -m "$binary"
+        go version -m "$binary" | grep -Eq 'build[[:space:]]+GOOS=${{ matrix.os }}'
+        go version -m "$binary" | grep -Eq 'build[[:space:]]+GOARCH=${{ matrix.arch }}'
+        if [ -n '${{ matrix.arm }}' ]; then
+          go version -m "$binary" | grep -Eq 'build[[:space:]]+GOARM=${{ matrix.arm }}'
+        fi
     - uses: actions/upload-artifact@v4
       with:
         name: pcap-${{ matrix.target }}
-        path: dist/*
+        path: dist/pcap-${{ matrix.target }}
       
