@@ -339,6 +339,21 @@ func (b *prog) checkPorts(direction filterDirection, port uint32, onMatch, onMis
 	}
 }
 
+func (b *prog) genEtherMulticast(onMatch, onMiss labelID) {
+	b.emit(bpf.LoadAbsolute{Off: 0, Size: 1})
+	b.emitJumpIf(bpf.JumpBitsSet, 0x01, onMatch, onMiss)
+}
+
+func (b *prog) genIPv4Multicast(onMatch, onMiss labelID) {
+	b.emit(bpf.LoadAbsolute{Off: b.layout.l3Off() + intraIP4DstAddr, Size: 1})
+	b.emitJumpIf(bpf.JumpGreaterOrEqual, 0xe0, onMatch, onMiss)
+}
+
+func (b *prog) genIPv6Multicast(onMatch, onMiss labelID) {
+	b.emit(bpf.LoadAbsolute{Off: b.layout.l3Off() + intraIP6DstAddrStart, Size: 1})
+	b.emitJumpIf(bpf.JumpEqual, 0xff, onMatch, onMiss)
+}
+
 // =============================================================================
 // Legacy fixed-offset code generation. Everything below this banner assumes
 // Ethernet framing and hand-counted skip offsets; it is being replaced by the
