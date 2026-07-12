@@ -27,8 +27,19 @@ endif
 
 BINDIR := ./dist
 BIN := pcap
+# TARGET labels an artifact independently of the Go target tuple. Keep the
+# supported 32-bit ARM baselines explicit so a v7 binary is never mislabeled
+# as suitable for v6.
+TARGETARCH := $(ARCH)
+ifeq ($(ARCH),arm)
+ifeq ($(filter 6 7,$(GOARM)),)
+$(error GOARM must be 6 or 7 when ARCH=arm)
+endif
+TARGETARCH := armv$(GOARM)
+endif
+TARGET ?= $(OS)-$(TARGETARCH)
 GOBINDIR ?= $(shell go env GOPATH)/bin
-LOCALBIN := $(BINDIR)/$(BIN)-$(OS)-$(ARCH)
+LOCALBIN := $(BINDIR)/$(BIN)-$(TARGET)
 INSTALLBIN := $(GOBINDIR)/$(BIN)
 
 .PHONY: build clean fmt test bench fmt-check lint golangci-lint
@@ -44,7 +55,7 @@ $(BINDIR):
 
 build: $(LOCALBIN) $(BIN)
 $(LOCALBIN): $(BINDIR)
-	CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o $@ ./cmd
+	CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) $(if $(filter arm,$(ARCH)),$(if $(GOARM),GOARM=$(GOARM))) go build -o $@ ./cmd
 $(BIN):
 	@if [ "$(OS)" = "$(BUILDOS)" -a "$(ARCH)" = "$(BUILDARCH)" -a ! -e "$@" ]; then ln -s $(LOCALBIN) $@; fi
 
