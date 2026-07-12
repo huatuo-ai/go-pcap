@@ -15,18 +15,26 @@
 package filter
 
 const (
-	lengthByte                 int    = 1
-	lengthHalf                 int    = 2
-	lengthWord                 int    = 4
-	bitsPerWord                int    = 32
-	etherTypeIPv4              uint32 = 0x0800
-	etherTypeIPv6              uint32 = 0x86dd
-	etherTypeArp               uint32 = 0x806
-	etherTypeRarp              uint32 = 0x8035
-	jumpMask                   uint32 = 0x1fff
-	ipProtocolTCP              uint32 = 0x06
-	ipProtocolUDP              uint32 = 0x11
-	ipProtocolSctp             uint32 = 0x84
+	lengthByte  int    = 1
+	lengthHalf  int    = 2
+	lengthWord  int    = 4
+	bitsPerWord int    = 32
+	jumpMask    uint32 = 0x1fff
+
+	// Protocol numbers (network layer).
+	etherTypeIPv4 uint32 = 0x0800
+	etherTypeIPv6 uint32 = 0x86dd
+	etherTypeArp  uint32 = 0x806
+	etherTypeRarp uint32 = 0x8035
+
+	ipProtocolTCP  uint32 = 0x06
+	ipProtocolUDP  uint32 = 0x11
+	ipProtocolSctp uint32 = 0x84
+
+	ip6ContinuationPacket uint32 = 0x2c
+
+	// Absolute packet offsets assuming Ethernet framing; to be replaced by
+	// layout-relative intra-IP offsets as code generation becomes DLT-aware.
 	ip6SourcePort              uint32 = 54
 	ip6DestinationPort         uint32 = 56
 	ip4SourcePort              uint32 = 14
@@ -35,7 +43,6 @@ const (
 	ip4HeaderFlags             uint32 = 20
 	ip6SourceAddressStart      uint32 = 22
 	ip6DestinationAddressStart uint32 = 38
-	ip6ContinuationPacket      uint32 = 0x2c
 )
 
 type filterKind int
