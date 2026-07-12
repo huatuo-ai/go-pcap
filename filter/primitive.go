@@ -449,6 +449,65 @@ func (p primitive) isAlwaysReject(layout linkLayout) bool {
 // isAlwaysAccept always returns false.
 func (p primitive) isAlwaysAccept(layout linkLayout) bool { return false }
 
+// emitIPv6SubProtocol checks for a sub-protocol in an IPv6 packet.
+func (p primitive) emitIPv6SubProtocol(b *prog, onMatch, onMiss labelID) {
+	switch p.subProtocol {
+	case filterSubProtocolStp:
+		subOk := b.newLabel()
+		b.compareSubProtocolSctp(subOk, onMiss)
+		b.bind(subOk)
+		b.emitJump(onMatch)
+	default:
+		b.compareIPv6Protocol(p.protoNum(), onMatch, onMiss)
+	}
+}
+
+// emitSubProtocolCompare emits the sub-protocol comparison for Port primitives.
+// On match it falls through to the port check that follows. On miss it branches
+// to onMiss. This is shared by the IPv4 and IPv6 port paths.
+func (p primitive) emitSubProtocolCompare(b *prog, onMatch, onMiss labelID, ip6 bool) {
+	switch p.subProtocol {
+	case filterSubProtocolTCP:
+		subOk := b.newLabel()
+		b.compareSubProtocolTCP(subOk, onMiss)
+		b.bind(subOk)
+
+	case filterSubProtocolUDP:
+		subOk := b.newLabel()
+		b.compareSubProtocolUDP(subOk, onMiss)
+		b.bind(subOk)
+
+	case filterSubProtocolStp:
+		subOk := b.newLabel()
+		b.compareSubProtocolSctp(subOk, onMiss)
+		b.bind(subOk)
+
+	case filterSubProtocolUnset:
+		// Check SCTP then TCP then UDP. Fall through on any match.
+		afterAll := b.newLabel()
+
+		sctpOk := b.newLabel()
+		tryTCP := b.newLabel()
+		b.compareSubProtocolSctp(sctpOk, tryTCP)
+		b.bind(sctpOk)
+		b.emitJump(afterAll)
+
+		b.bind(tryTCP)
+		tcpOk := b.newLabel()
+		tryUDP := b.newLabel()
+		b.compareSubProtocolTCP(tcpOk, tryUDP)
+		b.bind(tcpOk)
+		b.emitJump(afterAll)
+
+		b.bind(tryUDP)
+		udpOk := b.newLabel()
+		b.compareSubProtocolUDP(udpOk, onMiss)
+		b.bind(udpOk)
+
+		b.bind(afterAll)
+	}
+}
+
 // protoNum maps the primitive's subProtocol to its IP protocol number.
 func (p primitive) protoNum() uint32 {
 	switch p.subProtocol {
