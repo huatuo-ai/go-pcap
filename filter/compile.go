@@ -38,6 +38,16 @@ func (b *prog) loadEtherKind() {
 	b.emit(b.layout.genLinkProbe()...)
 }
 
+func (b *prog) compareProtocolIP4(onMatch, onMiss labelID) {
+	j := b.layout.genLinkType(etherTypeIPv4, 0, 0).(bpf.JumpIf)
+	b.emitJumpIf(j.Cond, j.Val, onMatch, onMiss)
+}
+
+func (b *prog) compareProtocolIP6(onMatch, onMiss labelID) {
+	j := b.layout.genLinkType(etherTypeIPv6, 0, 0).(bpf.JumpIf)
+	b.emitJumpIf(j.Cond, j.Val, onMatch, onMiss)
+}
+
 // =============================================================================
 // Legacy fixed-offset code generation. Everything below this banner assumes
 // Ethernet framing and hand-counted skip offsets; it is being replaced by the
