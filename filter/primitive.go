@@ -596,6 +596,94 @@ func (p primitive) emitPort(b *prog, onMatch, onMiss labelID) {
 	}
 }
 
+func (p primitive) emitNet(b *prog, onMatch, onMiss labelID) {
+	switch p.protocol {
+	case filterProtocolIP6:
+		b.loadEtherKind()
+		ip6Ok := b.newLabel()
+		b.compareProtocolIP6(ip6Ok, onMiss)
+		b.bind(ip6Ok)
+		addr, network, _ := getNetAndMask(p.id)
+		b.checkIP6NetAddresses(p.direction, addr, network.Mask, onMatch, onMiss)
+
+	case filterProtocolIP:
+		b.loadEtherKind()
+		ip4Ok := b.newLabel()
+		b.compareProtocolIP4(ip4Ok, onMiss)
+		b.bind(ip4Ok)
+		b.checkIP4NetHostAddresses(p.direction, p.id, onMatch, onMiss)
+
+	case filterProtocolArp:
+		if !b.layout.hasL2Protocols() {
+			b.emitJump(onMiss)
+			return
+		}
+		b.loadEtherKind()
+		arpOk := b.newLabel()
+		b.compareProtocolArp(arpOk, onMiss)
+		b.bind(arpOk)
+		b.checkIP4NetArpAddresses(p.direction, p.id, onMatch, onMiss)
+
+	case filterProtocolRarp:
+		if !b.layout.hasL2Protocols() {
+			b.emitJump(onMiss)
+			return
+		}
+		b.loadEtherKind()
+		rarpOk := b.newLabel()
+		b.compareProtocolRarp(rarpOk, onMiss)
+		b.bind(rarpOk)
+		b.checkIP4NetArpAddresses(p.direction, p.id, onMatch, onMiss)
+
+	case filterProtocolUnset:
+		p.emitNetUnset(b, onMatch, onMiss)
+	}
+}
+
+func (p primitive) emitNetUnset(b *prog, onMatch, onMiss labelID) {
+	b.loadEtherKind()
+	addr, network, _ := getNetAndMask(p.id)
+	hasL2 := b.layout.hasL2Protocols()
+
+	if addr.To4() != nil {
+		ip4Ok := b.newLabel()
+		var arpStart labelID
+
+		if hasL2 {
+			arpStart = b.newLabel()
+			b.compareProtocolIP4(ip4Ok, arpStart)
+		} else {
+			b.compareProtocolIP4(ip4Ok, onMiss)
+		}
+		b.bind(ip4Ok)
+		b.checkIP4NetHostAddresses(p.direction, p.id, onMatch, onMiss)
+
+		if hasL2 {
+			b.bind(arpStart)
+			arpOk := b.newLabel()
+			tryRARP := b.newLabel()
+			b.compareProtocolArp(arpOk, tryRARP)
+			b.bind(arpOk)
+
+			arpAddrDo := b.newLabel()
+			b.emitJump(arpAddrDo)
+
+			b.bind(tryRARP)
+			rarpOk := b.newLabel()
+			b.compareProtocolRarp(rarpOk, onMiss)
+			b.bind(rarpOk)
+
+			b.bind(arpAddrDo)
+			b.checkIP4NetArpAddresses(p.direction, p.id, onMatch, onMiss)
+		}
+	} else {
+		ip6Ok := b.newLabel()
+		b.compareProtocolIP6(ip6Ok, onMiss)
+		b.bind(ip6Ok)
+		b.checkIP6NetAddresses(p.direction, addr, network.Mask, onMatch, onMiss)
+	}
+}
+
 func (p primitive) emitUnset(b *prog, onMatch, onMiss labelID) {
 	b.loadEtherKind()
 
