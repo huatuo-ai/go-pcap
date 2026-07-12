@@ -151,6 +151,64 @@ func (b *prog) checkEtherAddresses(direction filterDirection, addr string, onMat
 	}
 }
 
+func (b *prog) checkIP4HostAddresses(direction filterDirection, addr net.IP, onMatch, onMiss labelID) {
+	b.checkIP4Addresses(direction, addr, nil, onMatch, onMiss,
+		loadIPv4SourceAddress(b.layout), loadIPv4DestinationAddress(b.layout))
+}
+
+func (b *prog) checkIP4ArpAddresses(direction filterDirection, addr net.IP, onMatch, onMiss labelID) {
+	b.checkIP4Addresses(direction, addr, nil, onMatch, onMiss,
+		loadArpSenderAddress(b.layout), loadArpTargetAddress(b.layout))
+}
+
+func (b *prog) checkIP4Addresses(direction filterDirection, addr []byte, maskCheck *bpf.ALUOpConstant, onMatch, onMiss labelID, loadSrcDst ...bpf.Instruction) {
+	if addr == nil {
+		return
+	}
+	addrVal := binary.BigEndian.Uint32(addr[len(addr)-4:])
+
+	switch direction {
+	case filterDirectionSrc:
+		b.emit(loadSrcDst[0])
+		if maskCheck != nil {
+			b.emit(*maskCheck)
+		}
+		b.emitJumpIf(bpf.JumpEqual, addrVal, onMatch, onMiss)
+	case filterDirectionDst:
+		b.emit(loadSrcDst[1])
+		if maskCheck != nil {
+			b.emit(*maskCheck)
+		}
+		b.emitJumpIf(bpf.JumpEqual, addrVal, onMatch, onMiss)
+	case filterDirectionSrcOrDst:
+		cont := b.newLabel()
+		b.emit(loadSrcDst[0])
+		if maskCheck != nil {
+			b.emit(*maskCheck)
+		}
+		b.emitJumpIf(bpf.JumpEqual, addrVal, onMatch, cont)
+		b.bind(cont)
+		b.emit(loadSrcDst[1])
+		if maskCheck != nil {
+			b.emit(*maskCheck)
+		}
+		b.emitJumpIf(bpf.JumpEqual, addrVal, onMatch, onMiss)
+	case filterDirectionSrcAndDst:
+		cont := b.newLabel()
+		b.emit(loadSrcDst[0])
+		if maskCheck != nil {
+			b.emit(*maskCheck)
+		}
+		b.emitJumpIf(bpf.JumpEqual, addrVal, cont, onMiss)
+		b.bind(cont)
+		b.emit(loadSrcDst[1])
+		if maskCheck != nil {
+			b.emit(*maskCheck)
+		}
+		b.emitJumpIf(bpf.JumpEqual, addrVal, onMatch, onMiss)
+	}
+}
+
 // =============================================================================
 // Legacy fixed-offset code generation. Everything below this banner assumes
 // Ethernet framing and hand-counted skip offsets; it is being replaced by the
