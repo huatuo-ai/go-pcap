@@ -449,6 +449,33 @@ func (p primitive) isAlwaysReject(layout linkLayout) bool {
 // isAlwaysAccept always returns false.
 func (p primitive) isAlwaysAccept(layout linkLayout) bool { return false }
 
+// protoNum maps the primitive's subProtocol to its IP protocol number.
+func (p primitive) protoNum() uint32 {
+	switch p.subProtocol {
+	case filterSubProtocolTCP:
+		return ipProtocolTCP
+	case filterSubProtocolUDP:
+		return ipProtocolUDP
+	case filterSubProtocolStp:
+		return ipProtocolSctp
+	case filterSubProtocolIcmp:
+		return ipProtocolIcmp
+	case filterSubProtocolIgmp:
+		return ipProtocolIgmp
+	case filterSubProtocolIcmp6:
+		return ipProtocolIcmp6
+	case filterSubProtocolPim:
+		return ipProtocolPim
+	case filterSubProtocolEsp:
+		return ipProtocolEsp
+	case filterSubProtocolAh:
+		return ipProtocolAh
+	case filterSubProtocolVrrp:
+		return ipProtocolVrrp
+	}
+	return 0
+}
+
 func (p primitive) Equal(f Filter) bool {
 	if f == nil {
 		return false
