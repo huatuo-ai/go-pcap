@@ -65,12 +65,7 @@ func (h *Handle) SetBPFFilter(expr string) error {
 	if expr2 == "" {
 		return nil
 	}
-	e := filter.NewExpression(expr2)
-	if e == nil {
-		return fmt.Errorf("no expression received for filter '%s'", expr)
-	}
-	f := e.Compile()
-	instructions, err := f.Compile()
+	instructions, err := filter.Compile(expr2, filter.LinkTypeEthernet)
 	if err != nil {
 		return fmt.Errorf("failed to compile filter into instructions: %v", err)
 	}
