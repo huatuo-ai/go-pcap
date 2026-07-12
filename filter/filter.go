@@ -30,6 +30,30 @@ type Filter interface {
 	Distill() Filter
 }
 
+// emitter is the transitional surface of the label-based engine: the pieces
+// of Filter the new assembler needs. It merges into Filter itself once every
+// node implements it and compilation switches over to link layouts.
+type emitter interface {
+	emit(b *prog, onMatch, onMiss labelID)
+	isAlwaysReject(layout linkLayout) bool
+	isAlwaysAccept(layout linkLayout) bool
+}
+
+// compileFilter compiles a Filter using the new emit-based assembler. It
+// handles the always-accept/always-reject short-circuits, then falls through
+// to creating a prog and calling emit.
+func compileFilter(f emitter, layout linkLayout) ([]bpf.Instruction, error) {
+	if f.isAlwaysReject(layout) {
+		return []bpf.Instruction{returnDrop, returnKeep}, nil
+	}
+	if f.isAlwaysAccept(layout) {
+		return []bpf.Instruction{returnKeep, returnDrop}, nil
+	}
+	b := newProg(layout)
+	f.emit(b, labelKeep, labelFail)
+	return b.finalize()
+}
+
 type ElementType uint8
 
 const (
