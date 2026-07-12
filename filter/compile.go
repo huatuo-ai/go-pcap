@@ -31,6 +31,14 @@ var (
 )
 
 // =============================================================================
+// Builder methods on *prog — emit helpers with label targets
+// =============================================================================
+
+func (b *prog) loadEtherKind() {
+	b.emit(b.layout.genLinkProbe()...)
+}
+
+// =============================================================================
 // Legacy fixed-offset code generation. Everything below this banner assumes
 // Ethernet framing and hand-counted skip offsets; it is being replaced by the
 // layout-aware *prog builder methods and removed once all callers migrate.
