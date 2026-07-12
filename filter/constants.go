@@ -33,6 +33,25 @@ const (
 
 	ip6ContinuationPacket uint32 = 0x2c
 
+	// Intra-IP offsets (byte offset from the start of the IP header).
+	// Absolute packet offset = layout.l3Off() + intraIPOffset.
+	intraIP4HeaderFlags uint32 = 6
+	intraIP4Protocol    uint32 = 9
+	intraIP4SrcAddr     uint32 = 12
+	intraIP4DstAddr     uint32 = 16
+	intraIP4SrcPort     uint32 = 0  // relative to end of IP header (LoadIndirect)
+	intraIP4DstPort     uint32 = 2  // relative to end of IP header (LoadIndirect)
+	intraIP4HeaderSize  uint32 = 0  // offset of IHL nibble within IP header (LoadMemShift)
+	intraArpSenderAddr  uint32 = 14 // offset within ARP packet
+	intraArpTargetAddr  uint32 = 24 // offset within ARP packet
+
+	intraIP6NextHeader   uint32 = 6
+	intraIP6SrcAddrStart uint32 = 8
+	intraIP6DstAddrStart uint32 = 24
+	intraIP6SrcPort      uint32 = 40 // offset within IPv6 header
+	intraIP6DstPort      uint32 = 42 // offset within IPv6 header
+	intraIP6ContHdrProto uint32 = 40 // offset of protocol in continuation header
+
 	// Absolute packet offsets assuming Ethernet framing; to be replaced by
 	// layout-relative intra-IP offsets as code generation becomes DLT-aware.
 	ip6SourcePort              uint32 = 54
