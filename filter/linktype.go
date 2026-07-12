@@ -16,6 +16,8 @@ package filter
 
 import (
 	"errors"
+
+	"golang.org/x/net/bpf"
 )
 
 // LinkType enumerates supported data-link types.
@@ -34,3 +36,28 @@ var (
 	ErrUnsupportedLinkType = errors.New("filter: unsupported link type")
 	ErrL2OnlyLinkType      = errors.New("filter: expression matches only L2 protocols on non-L2 link type")
 )
+
+// linkLayout abstracts per-link-type packet layout.
+// Concrete implementations are ethernetLayout and rawLayout, selected
+// by layoutFor through an explicit switch (closed set, no registry).
+type linkLayout interface {
+	// l3Off returns the byte offset from packet start to the L3 (IP) header.
+	l3Off() uint32
+
+	// genLinkProbe returns instructions that load the link-layer type into A.
+	genLinkProbe() []bpf.Instruction
+
+	// genLinkType returns a JumpIf comparing A against the link-type value
+	// for proto. st/sf are relative skip offsets.
+	genLinkType(proto uint32, st, sf uint8) bpf.Instruction
+
+	// linkProbeSize returns len(genLinkProbe()).
+	linkProbeSize() uint8
+
+	// linkCompareSize returns 1 (the JumpIf from genLinkType).
+	linkCompareSize() uint8
+
+	// hasL2Protocols reports whether this link type carries L2 protocols
+	// (arp, rarp, ether).
+	hasL2Protocols() bool
+}
