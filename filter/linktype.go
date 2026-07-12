@@ -121,3 +121,42 @@ func layoutFor(lt LinkType) (linkLayout, error) {
 		return nil, fmt.Errorf("%w: %d", ErrUnsupportedLinkType, lt)
 	}
 }
+
+// Compile parses a tcpdump filter expression and compiles it to cBPF
+// instructions for the given link type.
+func Compile(expr string, lt LinkType) ([]bpf.Instruction, error) {
+	if expr == "" {
+		return nil, ErrEmptyFilter
+	}
+	layout, err := layoutFor(lt)
+	if err != nil {
+		return nil, err
+	}
+	e := NewExpression(expr)
+	if e == nil {
+		return nil, ErrEmptyFilter
+	}
+	f := e.Compile()
+	if f == nil {
+		return nil, fmt.Errorf("%w: %q", ErrInvalidFilter, expr)
+	}
+	insns, err := compileFilter(f.(emitter), layout)
+	if err != nil {
+		return nil, err
+	}
+	if !layout.hasL2Protocols() && len(insns) == 2 {
+		if insns[0] == returnDrop && insns[1] == returnKeep {
+			return nil, ErrL2OnlyLinkType
+		}
+	}
+	return insns, nil
+}
+
+// Size returns the instruction count that Compile would emit for expr+lt.
+func Size(expr string, lt LinkType) (int, error) {
+	insns, err := Compile(expr, lt)
+	if err != nil {
+		return 0, err
+	}
+	return len(insns), nil
+}
