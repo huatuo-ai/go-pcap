@@ -44,6 +44,12 @@ func (p primitive) Combine(o *primitive) *primitive {
 	if p.kind == filterKindMulticast || o.kind == filterKindMulticast {
 		return nil
 	}
+	if !p.kindCanCombineSubProtocol() && o.subProtocol != filterSubProtocolUnset {
+		return nil
+	}
+	if !o.kindCanCombineSubProtocol() && p.subProtocol != filterSubProtocolUnset {
+		return nil
+	}
 	if p.Equal(o) {
 		return &p
 	}
@@ -95,6 +101,15 @@ func (p primitive) Combine(o *primitive) *primitive {
 		return nil
 	}
 	return &c
+}
+
+func (p primitive) kindCanCombineSubProtocol() bool {
+	switch p.kind {
+	case filterKindUnset, filterKindPort, filterKindPortRange:
+		return true
+	default:
+		return false
+	}
 }
 
 // Compile validates the primitive and delegates to the two-pass assembler.

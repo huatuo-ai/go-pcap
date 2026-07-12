@@ -154,6 +154,19 @@ func TestPrimitiveCombine(t *testing.T) {
 			subProtocol: filterSubProtocolUDP,
 			id:          "53",
 		}},
+		// "host abc and tcp" must stay a composite; host compilation does not
+		// consume sub-protocol constraints.
+		{primitive{
+			kind:      filterKindHost,
+			direction: filterDirectionUnset,
+			protocol:  filterProtocolUnset,
+			id:        "abc",
+		}, primitive{
+			kind:        filterKindUnset,
+			direction:   filterDirectionUnset,
+			protocol:    filterProtocolUnset,
+			subProtocol: filterSubProtocolTCP,
+		}, nil},
 	}
 	for i, tt := range tests {
 		c := tt.a.Combine(&tt.b)
