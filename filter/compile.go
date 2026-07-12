@@ -161,6 +161,32 @@ func (b *prog) checkIP4ArpAddresses(direction filterDirection, addr net.IP, onMa
 		loadArpSenderAddress(b.layout), loadArpTargetAddress(b.layout))
 }
 
+func (b *prog) checkIP4NetHostAddresses(direction filterDirection, addr string, onMatch, onMiss labelID) {
+	b.checkIP4NetAddresses(direction, addr, true, onMatch, onMiss)
+}
+
+func (b *prog) checkIP4NetArpAddresses(direction filterDirection, addr string, onMatch, onMiss labelID) {
+	b.checkIP4NetAddresses(direction, addr, false, onMatch, onMiss)
+}
+
+func (b *prog) checkIP4NetAddresses(direction filterDirection, addr string, ip bool, onMatch, onMiss labelID) {
+	addrBytes, network, _ := getNetAndMask(addr)
+	if addrBytes == nil {
+		return
+	}
+	var maskCheck *bpf.ALUOpConstant
+	if !bytes.Equal(network.Mask, ip4MaskFull) {
+		maskCheck = &bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: binary.BigEndian.Uint32(network.Mask)}
+	}
+	if ip {
+		b.checkIP4Addresses(direction, addrBytes, maskCheck, onMatch, onMiss,
+			loadIPv4SourceAddress(b.layout), loadIPv4DestinationAddress(b.layout))
+	} else {
+		b.checkIP4Addresses(direction, addrBytes, maskCheck, onMatch, onMiss,
+			loadArpSenderAddress(b.layout), loadArpTargetAddress(b.layout))
+	}
+}
+
 func (b *prog) checkIP4Addresses(direction filterDirection, addr []byte, maskCheck *bpf.ALUOpConstant, onMatch, onMiss labelID, loadSrcDst ...bpf.Instruction) {
 	if addr == nil {
 		return
