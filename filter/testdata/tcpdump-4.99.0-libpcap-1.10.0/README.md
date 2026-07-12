@@ -7,11 +7,13 @@ tcpdump version 4.99.0
 libpcap version 1.10.0
 ```
 
-Each file records one expression and data-link type.  The tests compare the
-accept/reject decisions of the resulting reference program with the program
-compiled by this package; they intentionally do not require byte-for-byte
-instruction equality.
+Each file records one expression and data-link type. The fixture names map to
+the expressions in `TestTCPDumpGoldenDecisionEquivalence`. The tests compare
+the accept/reject decisions of the resulting reference program with the
+program compiled by this package; they intentionally do not require
+byte-for-byte instruction equality.
 
-To deliberately refresh a reference, run the command named by the test case,
-review the semantic change, and update both the fixture and this version note.
-Do not refresh these files as part of an unrelated compiler change.
+To deliberately refresh a reference, run `tcpdump -y <DLT> -ddd <expression>`
+for the matching test case, review the semantic change, and update both the
+fixture and this version note. Do not refresh these files as part of an
+unrelated compiler change.
