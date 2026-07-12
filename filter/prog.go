@@ -140,3 +140,77 @@ func (e skipOverflowError) Error() string {
 	return fmt.Sprintf("prog: inst %d: skip %d to label %d exceeds uint8", e.idx, e.skip, e.target)
 }
 func (e alreadyFinalizedError) Error() string { return "prog: finalize already called" }
+func (p *prog) finalize() ([]bpf.Instruction, error) {
+	if p.done {
+		return nil, alreadyFinalizedError{}
+	}
+	p.done = true
+	nKeep := len(p.insts)
+	p.insts = append(p.insts,
+		pendingInst{inst: returnKeep, kind: instPlain},
+		pendingInst{inst: returnDrop, kind: instPlain})
+	p.labels[labelKeep] = nKeep
+	p.labels[labelFail] = nKeep + 1
+	labelAt := make(map[labelID]int, len(p.labels))
+	for l, idx := range p.labels {
+		labelAt[l] = idx
+	}
+	resolve := func(target labelID, fromIdx int) (uint8, error) {
+		if target == labelInvalid {
+			return 0, invalidLabelError{idx: fromIdx, field: "target"}
+		}
+		targetIdx, ok := labelAt[target]
+		if !ok {
+			return 0, unboundLabelError{idx: fromIdx, label: target}
+		}
+		if targetIdx <= fromIdx {
+			return 0, backwardJumpError{idx: fromIdx, target: target, targetIdx: targetIdx}
+		}
+		diff := targetIdx - fromIdx - 1
+		if diff > 255 {
+			return 0, skipOverflowError{idx: fromIdx, target: target, skip: diff}
+		}
+		return uint8(diff), nil
+	}
+	for i, pi := range p.insts[:nKeep] {
+		switch pi.kind {
+		case instPlain:
+			continue
+		case instJump:
+			skip, err := resolve(pi.targetT, i)
+			if err != nil {
+				return nil, err
+			}
+			p.insts[i].inst = bpf.Jump{Skip: uint32(skip)}
+		case instJumpIf:
+			st, err := resolve(pi.targetT, i)
+			if err != nil {
+				return nil, err
+			}
+			sf, err := resolve(pi.targetF, i)
+			if err != nil {
+				return nil, err
+			}
+			j := p.insts[i].inst.(bpf.JumpIf)
+			j.SkipTrue, j.SkipFalse = st, sf
+			p.insts[i].inst = j
+		case instJumpIfX:
+			st, err := resolve(pi.targetT, i)
+			if err != nil {
+				return nil, err
+			}
+			sf, err := resolve(pi.targetF, i)
+			if err != nil {
+				return nil, err
+			}
+			j := p.insts[i].inst.(bpf.JumpIfX)
+			j.SkipTrue, j.SkipFalse = st, sf
+			p.insts[i].inst = j
+		}
+	}
+	out := make([]bpf.Instruction, len(p.insts))
+	for i, pi := range p.insts {
+		out[i] = pi.inst
+	}
+	return out, nil
+}
