@@ -304,6 +304,41 @@ func (b *prog) loadAndCompareIPv6Address(addr [4]uint32, mask net.IPMask, source
 	}
 }
 
+func (b *prog) checkPorts(direction filterDirection, port uint32, onMatch, onMiss labelID, ip6 bool) {
+	var loadSource, loadDestination bpf.Instruction
+	if ip6 {
+		loadSource = loadIPv6SourcePort(b.layout)
+		loadDestination = loadIPv6DestinationPort(b.layout)
+	} else {
+		loadSource = loadIPv4SourcePort(b.layout)
+		loadDestination = loadIPv4DestinationPort(b.layout)
+		b.loadIPv4HeaderOffset(onMiss)
+	}
+
+	switch direction {
+	case filterDirectionSrc:
+		b.emit(loadSource)
+		b.emitJumpIf(bpf.JumpEqual, port, onMatch, onMiss)
+	case filterDirectionDst:
+		b.emit(loadDestination)
+		b.emitJumpIf(bpf.JumpEqual, port, onMatch, onMiss)
+	case filterDirectionSrcOrDst:
+		cont := b.newLabel()
+		b.emit(loadSource)
+		b.emitJumpIf(bpf.JumpEqual, port, onMatch, cont)
+		b.bind(cont)
+		b.emit(loadDestination)
+		b.emitJumpIf(bpf.JumpEqual, port, onMatch, onMiss)
+	case filterDirectionSrcAndDst:
+		cont := b.newLabel()
+		b.emit(loadSource)
+		b.emitJumpIf(bpf.JumpEqual, port, cont, onMiss)
+		b.bind(cont)
+		b.emit(loadDestination)
+		b.emitJumpIf(bpf.JumpEqual, port, onMatch, onMiss)
+	}
+}
+
 // =============================================================================
 // Legacy fixed-offset code generation. Everything below this banner assumes
 // Ethernet framing and hand-counted skip offsets; it is being replaced by the
