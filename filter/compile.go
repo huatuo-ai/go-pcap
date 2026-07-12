@@ -87,6 +87,14 @@ func (b *prog) compareIPv6Protocol(proto uint32, onMatch, onMiss labelID) {
 	b.emitJumpIf(bpf.JumpEqual, proto, onMatch, onMiss)
 }
 
+func (b *prog) loadIPv4HeaderOffset(onMiss labelID) {
+	cont := b.newLabel()
+	b.emit(bpf.LoadAbsolute{Off: b.layout.l3Off() + intraIP4HeaderFlags, Size: lengthHalf})
+	b.emitJumpIf(bpf.JumpBitsSet, jumpMask, onMiss, cont)
+	b.bind(cont)
+	b.emit(bpf.LoadMemShift{Off: b.layout.l3Off() + intraIP4HeaderSize})
+}
+
 // =============================================================================
 // Legacy fixed-offset code generation. Everything below this banner assumes
 // Ethernet framing and hand-counted skip offsets; it is being replaced by the
