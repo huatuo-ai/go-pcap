@@ -70,6 +70,23 @@ func (b *prog) compareSubProtocolSctp(onMatch, onMiss labelID) {
 	b.emitJumpIf(bpf.JumpEqual, ipProtocolSctp, onMatch, onMiss)
 }
 
+func (b *prog) compareIPv4Protocol(proto uint32, onMatch, onMiss labelID) {
+	b.emit(loadIPv4Protocol(b.layout))
+	b.emitJumpIf(bpf.JumpEqual, proto, onMatch, onMiss)
+}
+
+func (b *prog) compareIPv6Protocol(proto uint32, onMatch, onMiss labelID) {
+	mid := b.newLabel()
+	b.emit(loadIPv6Protocol(b.layout))
+	b.emitJumpIf(bpf.JumpEqual, proto, onMatch, mid)
+	b.bind(mid)
+	restart := b.newLabel()
+	b.emitJumpIf(bpf.JumpEqual, ip6ContinuationPacket, restart, onMiss)
+	b.bind(restart)
+	b.emit(loadIPv6ContinuationProtocol(b.layout))
+	b.emitJumpIf(bpf.JumpEqual, proto, onMatch, onMiss)
+}
+
 // =============================================================================
 // Legacy fixed-offset code generation. Everything below this banner assumes
 // Ethernet framing and hand-counted skip offsets; it is being replaced by the
