@@ -177,6 +177,52 @@ func TestExpressionNextPrimitive(t *testing.T) {
 	}
 }
 
+func TestExpressionNextDirectionalQualifier(t *testing.T) {
+	tests := []struct {
+		expression string
+		want       primitive
+	}{
+		{
+			expression: "src and dst host 192.0.2.1",
+			want: primitive{
+				direction: filterDirectionSrcAndDst,
+				kind:      filterKindHost,
+				id:        "192.0.2.1",
+			},
+		},
+		{
+			expression: "src and dst port 53",
+			want: primitive{
+				direction: filterDirectionSrcAndDst,
+				kind:      filterKindPort,
+				id:        "53",
+			},
+		},
+		{
+			expression: "src or dst host 2001:db8::1",
+			want: primitive{
+				direction: filterDirectionSrcOrDst,
+				kind:      filterKindHost,
+				id:        "2001:db8::1",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.expression, func(t *testing.T) {
+			e := NewExpression(tt.expression)
+			element := e.Next()
+			got, ok := element.(primitive)
+			if !ok {
+				t.Fatalf("got %T, want primitive", element)
+			}
+			if !got.Equal(tt.want) {
+				t.Errorf("mismatched primitive\nactual   %#v\nexpected %#v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestExpressionCompile(t *testing.T) {
 	for k, v := range testCasesExpressionFilterInstructions {
 		t.Run(k, func(t *testing.T) {
