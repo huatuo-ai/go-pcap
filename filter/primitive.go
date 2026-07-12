@@ -550,6 +550,52 @@ func (p primitive) emitHostUnset(b *prog, onMatch, onMiss labelID) {
 	}
 }
 
+func (p primitive) emitPort(b *prog, onMatch, onMiss labelID) {
+	portInt, err := findPort(p.id)
+	if err != nil {
+		b.emitJump(onMiss)
+		return
+	}
+	port := uint32(portInt)
+	b.loadEtherKind()
+
+	switch p.protocol {
+	case filterProtocolIP6:
+		ip6Ok := b.newLabel()
+		b.compareProtocolIP6(ip6Ok, onMiss)
+		b.bind(ip6Ok)
+		b.emit(loadIPv6Protocol(b.layout))
+		p.emitSubProtocolCompare(b, onMatch, onMiss, true)
+		b.checkPorts(p.direction, port, onMatch, onMiss, true)
+
+	case filterProtocolIP:
+		ip4Ok := b.newLabel()
+		b.compareProtocolIP4(ip4Ok, onMiss)
+		b.bind(ip4Ok)
+		b.emit(loadIPv4Protocol(b.layout))
+		p.emitSubProtocolCompare(b, onMatch, onMiss, false)
+		b.checkPorts(p.direction, port, onMatch, onMiss, false)
+
+	case filterProtocolUnset:
+		// Dual-stack: try IPv6 first, then IPv4.
+		tryIP4 := b.newLabel()
+		ip6Ok := b.newLabel()
+		b.compareProtocolIP6(ip6Ok, tryIP4)
+		b.bind(ip6Ok)
+		b.emit(loadIPv6Protocol(b.layout))
+		p.emitSubProtocolCompare(b, onMatch, onMiss, true)
+		b.checkPorts(p.direction, port, onMatch, onMiss, true)
+
+		b.bind(tryIP4)
+		ip4Ok := b.newLabel()
+		b.compareProtocolIP4(ip4Ok, onMiss)
+		b.bind(ip4Ok)
+		b.emit(loadIPv4Protocol(b.layout))
+		p.emitSubProtocolCompare(b, onMatch, onMiss, false)
+		b.checkPorts(p.direction, port, onMatch, onMiss, false)
+	}
+}
+
 func (p primitive) emitUnset(b *prog, onMatch, onMiss labelID) {
 	b.loadEtherKind()
 
