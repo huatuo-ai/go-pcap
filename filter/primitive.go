@@ -449,6 +449,107 @@ func (p primitive) isAlwaysReject(layout linkLayout) bool {
 // isAlwaysAccept always returns false.
 func (p primitive) isAlwaysAccept(layout linkLayout) bool { return false }
 
+func (p primitive) emitHost(b *prog, onMatch, onMiss labelID) {
+	switch p.protocol {
+	case filterProtocolEther:
+		if !b.layout.hasL2Protocols() {
+			b.emitJump(onMiss)
+			return
+		}
+		// No loadEtherKind: ether address check is independent of ethertype.
+		b.checkEtherAddresses(p.direction, p.id, onMatch, onMiss)
+
+	case filterProtocolIP6:
+		b.loadEtherKind()
+		ip6Ok := b.newLabel()
+		b.compareProtocolIP6(ip6Ok, onMiss)
+		b.bind(ip6Ok)
+		_, a6, _ := p.getAddrs()
+		b.checkIP6HostAddresses(p.direction, a6[0], onMatch, onMiss)
+
+	case filterProtocolIP:
+		b.loadEtherKind()
+		ip4Ok := b.newLabel()
+		b.compareProtocolIP4(ip4Ok, onMiss)
+		b.bind(ip4Ok)
+		a4, _, _ := p.getAddrs()
+		b.checkIP4HostAddresses(p.direction, a4[0], onMatch, onMiss)
+
+	case filterProtocolArp:
+		if !b.layout.hasL2Protocols() {
+			b.emitJump(onMiss)
+			return
+		}
+		b.loadEtherKind()
+		arpOk := b.newLabel()
+		b.compareProtocolArp(arpOk, onMiss)
+		b.bind(arpOk)
+		a4, _, _ := p.getAddrs()
+		b.checkIP4ArpAddresses(p.direction, a4[0], onMatch, onMiss)
+
+	case filterProtocolRarp:
+		if !b.layout.hasL2Protocols() {
+			b.emitJump(onMiss)
+			return
+		}
+		b.loadEtherKind()
+		rarpOk := b.newLabel()
+		b.compareProtocolRarp(rarpOk, onMiss)
+		b.bind(rarpOk)
+		a4, _, _ := p.getAddrs()
+		b.checkIP4ArpAddresses(p.direction, a4[0], onMatch, onMiss)
+
+	case filterProtocolUnset:
+		p.emitHostUnset(b, onMatch, onMiss)
+	}
+}
+
+func (p primitive) emitHostUnset(b *prog, onMatch, onMiss labelID) {
+	a4, a6, _ := p.getAddrs()
+	b.loadEtherKind()
+	hasL2 := b.layout.hasL2Protocols()
+
+	if len(a4) > 0 {
+		ip4Ok := b.newLabel()
+		// Determine where the IPv4 protocol-miss branch goes.
+		// With L2: always to afterIP4 (to check ARP/RARP).
+		// Without L2: directly to onMiss (no ARP/RARP on non-L2 links).
+		if hasL2 {
+			afterIP4 := b.newLabel()
+			b.compareProtocolIP4(ip4Ok, afterIP4)
+			b.bind(ip4Ok)
+			b.checkIP4HostAddresses(p.direction, a4[0], onMatch, onMiss)
+			b.bind(afterIP4)
+			// ARP and RARP share the same address-check label.
+			arpRarpCheck := b.newLabel()
+			notARP := b.newLabel()
+			b.compareProtocolArp(arpRarpCheck, notARP)
+			b.bind(notARP)
+			rarpMiss := onMiss
+			if len(a6) > 0 {
+				rarpMiss = b.newLabel()
+			}
+			b.compareProtocolRarp(arpRarpCheck, rarpMiss)
+			b.bind(arpRarpCheck)
+			b.checkIP4ArpAddresses(p.direction, a4[0], onMatch, onMiss)
+			if len(a6) > 0 {
+				b.bind(rarpMiss)
+			}
+		} else {
+			b.compareProtocolIP4(ip4Ok, onMiss)
+			b.bind(ip4Ok)
+			b.checkIP4HostAddresses(p.direction, a4[0], onMatch, onMiss)
+		}
+	}
+
+	if len(a6) > 0 {
+		ip6Ok := b.newLabel()
+		b.compareProtocolIP6(ip6Ok, onMiss)
+		b.bind(ip6Ok)
+		b.checkIP6HostAddresses(p.direction, a6[0], onMatch, onMiss)
+	}
+}
+
 func (p primitive) emitUnset(b *prog, onMatch, onMiss labelID) {
 	b.loadEtherKind()
 
