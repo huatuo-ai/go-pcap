@@ -48,6 +48,16 @@ func (b *prog) compareProtocolIP6(onMatch, onMiss labelID) {
 	b.emitJumpIf(j.Cond, j.Val, onMatch, onMiss)
 }
 
+func (b *prog) compareProtocolArp(onMatch, onMiss labelID) {
+	j := b.layout.genLinkType(etherTypeArp, 0, 0).(bpf.JumpIf)
+	b.emitJumpIf(j.Cond, j.Val, onMatch, onMiss)
+}
+
+func (b *prog) compareProtocolRarp(onMatch, onMiss labelID) {
+	j := b.layout.genLinkType(etherTypeRarp, 0, 0).(bpf.JumpIf)
+	b.emitJumpIf(j.Cond, j.Val, onMatch, onMiss)
+}
+
 // =============================================================================
 // Legacy fixed-offset code generation. Everything below this banner assumes
 // Ethernet framing and hand-counted skip offsets; it is being replaced by the
