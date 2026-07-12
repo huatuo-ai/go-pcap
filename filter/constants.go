@@ -58,17 +58,6 @@ const (
 	intraIP6SrcPort      uint32 = 40 // offset within IPv6 header
 	intraIP6DstPort      uint32 = 42 // offset within IPv6 header
 	intraIP6ContHdrProto uint32 = 40 // offset of protocol in continuation header
-
-	// Absolute packet offsets assuming Ethernet framing; to be replaced by
-	// layout-relative intra-IP offsets as code generation becomes DLT-aware.
-	ip6SourcePort              uint32 = 54
-	ip6DestinationPort         uint32 = 56
-	ip4SourcePort              uint32 = 14
-	ip4DestinationPort         uint32 = 16
-	ip4HeaderSize              uint32 = 14
-	ip4HeaderFlags             uint32 = 20
-	ip6SourceAddressStart      uint32 = 22
-	ip6DestinationAddressStart uint32 = 38
 )
 
 type filterKind int
