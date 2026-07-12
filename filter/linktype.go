@@ -61,3 +61,20 @@ type linkLayout interface {
 	// (arp, rarp, ether).
 	hasL2Protocols() bool
 }
+
+// ethernetLayout implements linkLayout for DLT_EN10MB.
+type ethernetLayout struct{}
+
+func (e ethernetLayout) l3Off() uint32        { return 14 }
+func (e ethernetLayout) linkProbeSize() uint8 { return 1 }
+func (e ethernetLayout) hasL2Protocols() bool { return true }
+
+func (e ethernetLayout) genLinkProbe() []bpf.Instruction {
+	return []bpf.Instruction{bpf.LoadAbsolute{Off: 12, Size: 2}}
+}
+
+func (e ethernetLayout) linkCompareSize() uint8 { return 1 }
+
+func (e ethernetLayout) genLinkType(proto uint32, st, sf uint8) bpf.Instruction {
+	return bpf.JumpIf{Cond: bpf.JumpEqual, Val: proto, SkipTrue: st, SkipFalse: sf}
+}
