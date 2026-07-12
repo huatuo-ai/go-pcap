@@ -140,10 +140,14 @@ func Compile(expr string, lt LinkType) ([]bpf.Instruction, error) {
 	if f == nil {
 		return nil, fmt.Errorf("%w: %q", ErrInvalidFilter, expr)
 	}
-	insns, err := compileFilter(f.(emitter), layout)
+	insns, err := f.Compile(layout)
 	if err != nil {
 		return nil, err
 	}
+	// If the entire compiled filter on a non-L2 link type is just
+	// 2 instructions (returnDrop, returnKeep), the whole expression
+	// matches only L2 protocols. Return ErrL2OnlyLinkType so callers
+	// can substitute a reject-all stub.
 	if !layout.hasL2Protocols() && len(insns) == 2 {
 		if insns[0] == returnDrop && insns[1] == returnKeep {
 			return nil, ErrL2OnlyLinkType
@@ -154,9 +158,20 @@ func Compile(expr string, lt LinkType) ([]bpf.Instruction, error) {
 
 // Size returns the instruction count that Compile would emit for expr+lt.
 func Size(expr string, lt LinkType) (int, error) {
-	insns, err := Compile(expr, lt)
+	if expr == "" {
+		return 0, ErrEmptyFilter
+	}
+	layout, err := layoutFor(lt)
 	if err != nil {
 		return 0, err
 	}
-	return len(insns), nil
+	e := NewExpression(expr)
+	if e == nil {
+		return 0, ErrEmptyFilter
+	}
+	f := e.Compile()
+	if f == nil {
+		return 0, fmt.Errorf("%w: %q", ErrInvalidFilter, expr)
+	}
+	return int(f.Size(layout)), nil
 }

@@ -25,6 +25,7 @@ type ExpressionToken int
 const (
 	eof rune = 0
 )
+
 const (
 	tokenAnd ExpressionToken = iota
 	tokenOr
@@ -78,7 +79,6 @@ type buffer struct {
 	word  string
 }
 type Expression struct {
-	raw    string
 	lexer  expressionLexer
 	buffer buffer
 }
@@ -92,7 +92,6 @@ func NewExpression(s string) *Expression {
 		return nil
 	}
 	e := &Expression{
-		raw: s,
 		lexer: expressionLexer{
 			reader: bufio.NewReader(strings.NewReader(s)),
 		},
@@ -209,9 +208,9 @@ func (e *Expression) Compile() Filter {
 	// create a root element, which should be a composite. If it ends up having
 	// just one member, we will return just that at the end.
 	var combo composite
-	// ops records the joiner between adjacent operands in lexical order. Build
-	// the AST after parsing so and can bind tighter than or instead of one
-	// later joiner changing the connective for the complete expression.
+	// ops records the joiner between adjacent operands in lexical order, so the
+	// tree can be rebuilt with correct precedence (and binds tighter than or)
+	// instead of collapsing every same-level term into a single combo.and.
 	var ops []bool
 	var pendingOp bool
 
@@ -220,20 +219,28 @@ func (e *Expression) Compile() Filter {
 		if fe = e.Next(); fe == nil {
 			break
 		}
-		if joiner, ok := fe.(*and); ok {
-			pendingOp = bool(*joiner)
+		if j, ok := fe.(*and); ok {
+			// it is not a primitive, so it is a joiner
+			pendingOp = bool(*j)
 			continue
 		}
+		// record the joiner connecting this operand to the previous one
 		if len(combo.filters) > 0 {
 			ops = append(ops, pendingOp)
 		}
-		switch f := fe.(type) {
+		switch v := fe.(type) {
 		case primitive:
-			p := f
+			p := v
 			setPrimitiveDefaults(&p, combo.LastPrimitive())
-			combo.filters = append(combo.filters, p)
+			if p.negator {
+				combo.filters = append(combo.filters, negated{inner: p})
+			} else {
+				combo.filters = append(combo.filters, p)
+			}
+		case negated:
+			combo.filters = append(combo.filters, v)
 		case composite:
-			combo.filters = append(combo.filters, f)
+			combo.filters = append(combo.filters, v)
 		}
 	}
 	return foldByPrecedence(combo.filters, ops).Distill()
@@ -241,12 +248,12 @@ func (e *Expression) Compile() Filter {
 
 // foldByPrecedence assembles operands into a precedence-correct tree where
 // "and" binds tighter than "or". ops[i] is the joiner between filters[i] and
-// filters[i+1] (true = and, false = or).
+// filters[i+1] (true = and, false = or): maximal and-runs become and
+// composites, which are then joined by or.
 func foldByPrecedence(filters Filters, ops []bool) Filter {
 	if len(filters) == 0 {
 		return composite{}
 	}
-
 	var orGroups Filters
 	andRun := Filters{filters[0]}
 	for i, op := range ops {
@@ -364,7 +371,11 @@ tokens:
 			return &j
 		case tokenLeft:
 			// start a new sub-element
-			return e.tokenBrace()
+			sub := e.tokenBrace()
+			if p.negator {
+				return negated{inner: sub}
+			}
+			return sub
 		case tokenRight:
 			// end a sub-element
 			return p
@@ -448,9 +459,9 @@ func setPrimitiveDefaults(p, lastPrimitive *primitive) {
 		p.subProtocol = lastPrimitive.subProtocol
 	}
 	// special cases
-	//if (p.subProtocol == filterSubProtocolUDP || p.subProtocol == filterSubProtocolTCP || p.subProtocol == filterSubProtocolIcmp) && p.protocol == filterProtocolUnset {
-	//p.protocol = filterProtocolIP
-	//}
+	// if (p.subProtocol == filterSubProtocolUDP || p.subProtocol == filterSubProtocolTCP || p.subProtocol == filterSubProtocolIcmp) && p.protocol == filterProtocolUnset {
+	// p.protocol = filterProtocolIP
+	// }
 
 	if p.kind == filterKindUnset && p.direction != filterDirectionUnset && (p.protocol == filterProtocolEther || p.protocol == filterProtocolIP || p.protocol == filterProtocolIP6 || p.protocol == filterProtocolArp || p.protocol == filterProtocolRarp) {
 		p.kind = filterKindHost
