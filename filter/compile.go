@@ -58,6 +58,18 @@ func (b *prog) compareProtocolRarp(onMatch, onMiss labelID) {
 	b.emitJumpIf(j.Cond, j.Val, onMatch, onMiss)
 }
 
+func (b *prog) compareSubProtocolTCP(onMatch, onMiss labelID) {
+	b.emitJumpIf(bpf.JumpEqual, ipProtocolTCP, onMatch, onMiss)
+}
+
+func (b *prog) compareSubProtocolUDP(onMatch, onMiss labelID) {
+	b.emitJumpIf(bpf.JumpEqual, ipProtocolUDP, onMatch, onMiss)
+}
+
+func (b *prog) compareSubProtocolSctp(onMatch, onMiss labelID) {
+	b.emitJumpIf(bpf.JumpEqual, ipProtocolSctp, onMatch, onMiss)
+}
+
 // =============================================================================
 // Legacy fixed-offset code generation. Everything below this banner assumes
 // Ethernet framing and hand-counted skip offsets; it is being replaced by the
