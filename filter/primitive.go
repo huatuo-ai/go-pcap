@@ -416,6 +416,39 @@ func (p primitive) Compile() ([]bpf.Instruction, error) {
 	return inst.inst, nil
 }
 
+// isAlwaysReject returns true for L2-only primitives on non-L2 link types.
+func (p primitive) isAlwaysReject(layout linkLayout) bool {
+	if layout.hasL2Protocols() {
+		return false
+	}
+	switch p.kind {
+	case filterKindHost:
+		switch p.protocol {
+		case filterProtocolEther, filterProtocolArp, filterProtocolRarp:
+			return true
+		}
+	case filterKindNet:
+		switch p.protocol {
+		case filterProtocolArp, filterProtocolRarp:
+			return true
+		}
+	case filterKindMulticast:
+		switch p.protocol {
+		case filterProtocolUnset, filterProtocolEther:
+			return true
+		}
+	case filterKindUnset:
+		switch p.protocol {
+		case filterProtocolArp, filterProtocolRarp:
+			return true
+		}
+	}
+	return false
+}
+
+// isAlwaysAccept always returns false.
+func (p primitive) isAlwaysAccept(layout linkLayout) bool { return false }
+
 func (p primitive) Equal(f Filter) bool {
 	if f == nil {
 		return false
