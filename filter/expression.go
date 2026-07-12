@@ -209,27 +209,67 @@ func (e *Expression) Compile() Filter {
 	// create a root element, which should be a composite. If it ends up having
 	// just one member, we will return just that at the end.
 	var combo composite
+	// ops records the joiner between adjacent operands in lexical order. Build
+	// the AST after parsing so and can bind tighter than or instead of one
+	// later joiner changing the connective for the complete expression.
+	var ops []bool
+	var pendingOp bool
 
 	for {
 		var fe Element
 		if fe = e.Next(); fe == nil {
 			break
 		}
-		switch fe.Type() {
-		case Primitive:
-			p := fe.(primitive)
+		if joiner, ok := fe.(*and); ok {
+			pendingOp = bool(*joiner)
+			continue
+		}
+		if len(combo.filters) > 0 {
+			ops = append(ops, pendingOp)
+		}
+		switch f := fe.(type) {
+		case primitive:
+			p := f
 			setPrimitiveDefaults(&p, combo.LastPrimitive())
 			combo.filters = append(combo.filters, p)
-		case Composite:
-			c := fe.(composite)
-			combo.filters = append(combo.filters, c)
-		case Joiner:
-			// it is not a primitive, so it is a joiner
-			isAnd := fe.(*and)
-			combo.and = bool(*isAnd)
+		case composite:
+			combo.filters = append(combo.filters, f)
 		}
 	}
-	return combo.Distill()
+	return foldByPrecedence(combo.filters, ops).Distill()
+}
+
+// foldByPrecedence assembles operands into a precedence-correct tree where
+// "and" binds tighter than "or". ops[i] is the joiner between filters[i] and
+// filters[i+1] (true = and, false = or).
+func foldByPrecedence(filters Filters, ops []bool) Filter {
+	if len(filters) == 0 {
+		return composite{}
+	}
+
+	var orGroups Filters
+	andRun := Filters{filters[0]}
+	for i, op := range ops {
+		if op {
+			andRun = append(andRun, filters[i+1])
+			continue
+		}
+		orGroups = append(orGroups, andGroup(andRun))
+		andRun = Filters{filters[i+1]}
+	}
+	orGroups = append(orGroups, andGroup(andRun))
+	if len(orGroups) == 1 {
+		return orGroups[0]
+	}
+	return composite{filters: orGroups, and: false}
+}
+
+// andGroup wraps a maximal and-run; a single operand needs no composite.
+func andGroup(run Filters) Filter {
+	if len(run) == 1 {
+		return run[0]
+	}
+	return composite{filters: run, and: true}
 }
 
 func (e *Expression) scan() (ExpressionToken, string) {

@@ -191,6 +191,61 @@ func TestExpressionCompile(t *testing.T) {
 	}
 }
 
+func TestExpressionCompilePrecedence(t *testing.T) {
+	tcp := primitive{direction: filterDirectionSrcOrDst, subProtocol: filterSubProtocolTCP}
+	udp := primitive{direction: filterDirectionSrcOrDst, subProtocol: filterSubProtocolUDP}
+	port80 := primitive{direction: filterDirectionSrcOrDst, kind: filterKindPort, id: "80"}
+	icmp := primitive{direction: filterDirectionSrcOrDst, subProtocol: filterSubProtocolIcmp}
+	igmp := primitive{direction: filterDirectionSrcOrDst, subProtocol: filterSubProtocolIgmp}
+
+	tests := []struct {
+		expression string
+		filter     Filter
+	}{
+		{
+			expression: "port 80 or tcp and udp",
+			filter: composite{and: false, filters: Filters{
+				port80,
+				composite{and: true, filters: Filters{tcp, udp}},
+			}},
+		},
+		{
+			expression: "udp and (port 53 or port 67)",
+			filter: composite{and: true, filters: Filters{
+				udp,
+				composite{and: false, filters: Filters{
+					primitive{direction: filterDirectionSrcOrDst, kind: filterKindPort, id: "53"},
+					primitive{direction: filterDirectionSrcOrDst, kind: filterKindPort, id: "67"},
+				}},
+			}},
+		},
+		{
+			expression: "tcp and udp or icmp and igmp",
+			filter: composite{and: false, filters: Filters{
+				composite{and: true, filters: Filters{tcp, udp}},
+				composite{and: true, filters: Filters{icmp, igmp}},
+			}},
+		},
+		{
+			expression: "tcp or udp and icmp or igmp",
+			filter: composite{and: false, filters: Filters{
+				tcp,
+				composite{and: true, filters: Filters{udp, icmp}},
+				igmp,
+			}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.expression, func(t *testing.T) {
+			e := NewExpression(tt.expression)
+			if got := e.Compile(); !got.Equal(tt.filter) {
+				t.Errorf("mismatched AST\nactual   %#v\nexpected %#v", got, tt.filter)
+			}
+		})
+	}
+}
+
 func TestFilterSize(t *testing.T) {
 	for k, v := range testCasesExpressionFilterInstructions {
 		t.Run(k, func(t *testing.T) {
