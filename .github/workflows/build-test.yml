@@ -50,12 +50,44 @@ jobs:
           golang:$(go list -m -f '{{.GoVersion}}') \
           /bin/sh -c "go mod download && go test ./..."
 
+  filter-race:
+    name: Filter race detector
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - name: Install dependencies
+        run: go mod download
+      - name: Run filter tests under the race detector
+        run: go test -race -count=1 ./filter
+
+  filter-compat:
+    name: Filter tcpdump golden compatibility
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - name: Install dependencies
+        run: go mod download
+      - name: Compare against checked-in tcpdump golden programs
+        run: go test -count=1 ./filter -run '^TestTCPDumpGoldenDecisionEquivalence$'
+
   build:
     name: Build
     uses: ./.github/workflows/build-reusable.yml
   
   summary:
-    needs: [build, test, report]
+    needs: [build, test, report, filter-race, filter-compat]
     runs-on: ubuntu-latest
     steps:
       - name: Summary
