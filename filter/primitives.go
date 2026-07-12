@@ -17,13 +17,13 @@ package filter
 // primitives a slice of primitive with some methods
 type primitives []primitive
 
-// combine combine multiple primitives until nothing is left to combine
+// combine combines multiple primitives until nothing is left to combine
 func (p *primitives) combine() *primitives {
 	// nothing to combine
 	if p == nil || len(*p) == 0 || len(*p) == 1 {
 		return p
 	}
-	// The simplest first cut is to have each one combine with its neighbour.
+	// The simplest first cut is to have each one combine with its neighbor.
 	// It isn't perfect - e.g. we will miss A combining with D - but it is a good start.
 	pd := *p
 	list := make(primitives, 0)

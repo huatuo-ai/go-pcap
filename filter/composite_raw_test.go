@@ -22,6 +22,9 @@ import (
 )
 
 func TestMulticastAndUdpRAW_L2Only(t *testing.T) {
+	// "multicast and udp" on RAW: multicast is pure L2 →
+	// AND with always-false → whole composite returns [drop, keep].
+	// Top-level Compile detects 2-instruction always-false → ErrL2OnlyLinkType.
 	_, err := Compile("multicast and udp", LinkTypeRaw)
 	if !errors.Is(err, ErrL2OnlyLinkType) {
 		t.Fatalf("expected ErrL2OnlyLinkType, got %v", err)
@@ -29,6 +32,8 @@ func TestMulticastAndUdpRAW_L2Only(t *testing.T) {
 }
 
 func TestMulticastOrUdpRAW(t *testing.T) {
+	// OR with always-false → skip multicast, result = bare udp on RAW.
+	// Should compile normally (not reject-all).
 	insns, err := Compile("multicast or udp", LinkTypeRaw)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -54,8 +59,8 @@ func TestCompositeOrRejectLastRAW(t *testing.T) {
 	}
 	mkUDP := func(d4 byte) []byte {
 		pkt := make([]byte, 40)
-		pkt[0] = 0x45
-		pkt[9] = 17
+		pkt[0] = 0x45 // IPv4, IHL=5
+		pkt[9] = 17   // UDP
 		pkt[16], pkt[17], pkt[18], pkt[19] = 1, 2, 3, d4
 		return pkt
 	}

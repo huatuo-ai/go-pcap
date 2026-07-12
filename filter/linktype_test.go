@@ -27,9 +27,12 @@ func TestDLT_RAW_ipHost(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	expected := []bpf.Instruction{
+		// genLinkProbe for RAW: load first byte, mask version nibble
 		bpf.LoadAbsolute{Off: 0, Size: 1},
 		bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: 0xF0},
+		// genLinkType for IPv4: compare nibble 0x40
 		bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x40, SkipFalse: 5},
+		// IPv4 src/dst check
 		bpf.LoadAbsolute{Off: 12, Size: 4},
 		bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x0a000001, SkipTrue: 2},
 		bpf.LoadAbsolute{Off: 16, Size: 4},
@@ -48,12 +51,15 @@ func TestDLT_RAW_ip6Host(t *testing.T) {
 	if len(insns) < 5 {
 		t.Fatalf("too few instructions: %d", len(insns))
 	}
+	// First instruction: load byte 0 (version field)
 	if insns[0] != (bpf.LoadAbsolute{Off: 0, Size: 1}) {
 		t.Errorf("insn[0]: expected LoadAbs{0,1}, got %v", insns[0])
 	}
+	// Second: AND 0xF0 (version nibble mask)
 	if insns[1] != (bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: 0xF0}) {
 		t.Errorf("insn[1]: expected AND #0xF0, got %v", insns[1])
 	}
+	// Third: JumpIf Eq 0x60 (IPv6 version nibble)
 	if insns[2].(bpf.JumpIf).Val != 0x60 {
 		t.Errorf("insn[2]: expected JumpIf Eq #0x60, got %v", insns[2])
 	}
@@ -67,6 +73,7 @@ func TestDLT_RAW_tcpPort(t *testing.T) {
 	if len(insns) < 10 {
 		t.Fatalf("too few instructions: %d", len(insns))
 	}
+	// Version nibble probe
 	if insns[0] != (bpf.LoadAbsolute{Off: 0, Size: 1}) {
 		t.Errorf("insn[0]: expected LoadAbs{0,1}, got %v", insns[0])
 	}
@@ -83,9 +90,11 @@ func TestDLT_RAW_udp(t *testing.T) {
 	if len(insns) < 6 {
 		t.Fatalf("too few instructions: %d", len(insns))
 	}
+	// Version nibble probe followed by ip6+ip4 checks
 }
 
 func TestDLT_RAW_unsetHost(t *testing.T) {
+	// "host 10.0.0.1" with unset protocol on RAW: should use IP version nibble
 	insns, err := Compile("host 10.0.0.1", LinkTypeRaw)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -93,6 +102,8 @@ func TestDLT_RAW_unsetHost(t *testing.T) {
 	if len(insns) < 5 {
 		t.Fatalf("too few instructions: %d", len(insns))
 	}
+	// No arp/rarp branches on RAW
+	// Should have ip4 nibble check and ip4 address check only
 	if insns[0] != (bpf.LoadAbsolute{Off: 0, Size: 1}) {
 		t.Errorf("insn[0]: expected LoadAbs{0,1}, got %v", insns[0])
 	}
@@ -106,12 +117,15 @@ func TestDLT_RAW_net(t *testing.T) {
 	if len(insns) < 5 {
 		t.Fatalf("too few instructions: %d", len(insns))
 	}
+	// Should have ip4 nibble check
 	if insns[0] != (bpf.LoadAbsolute{Off: 0, Size: 1}) {
 		t.Errorf("insn[0]: expected LoadAbs{0,1}, got %v", insns[0])
 	}
 }
 
 func TestDLT_RAW_l2Only(t *testing.T) {
+	// Pure L2-only expressions on RAW: Compile detects 2-instruction always-false
+	// and returns ErrL2OnlyLinkType so callers can substitute reject-all.
 	l2OnlyExprs := []string{
 		"arp",
 		"rarp",
@@ -125,6 +139,8 @@ func TestDLT_RAW_l2Only(t *testing.T) {
 			}
 		})
 	}
+	// L2 primitive in a composite with L3-capable terms: should compile
+	// (the L2 part becomes always-false via genLinkType with nibble 0xF0)
 	_, err := Compile("arp or ip host 1.2.3.4", LinkTypeRaw)
 	if err != nil {
 		t.Fatalf("unexpected error for composite: %v", err)
