@@ -17,7 +17,8 @@ jobs:
       - name: Download Built Artifacts
         uses: actions/download-artifact@v4
         with:
-          path: dist/
+            path: dist/
+            merge-multiple: true
       - name: GitHub Release
         uses: softprops/action-gh-release@v2
         env:
@@ -26,4 +27,3 @@ jobs:
             draft: false
             files: dist/*
             generate_release_notes: true
-
