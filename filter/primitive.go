@@ -449,6 +449,73 @@ func (p primitive) isAlwaysReject(layout linkLayout) bool {
 // isAlwaysAccept always returns false.
 func (p primitive) isAlwaysAccept(layout linkLayout) bool { return false }
 
+func (p primitive) emitUnset(b *prog, onMatch, onMiss labelID) {
+	b.loadEtherKind()
+
+	switch p.protocol {
+	case filterProtocolIP:
+		// Bare `ip` matches any IPv4 packet by EtherType alone, like tcpdump.
+		// Only narrow by protocol number when a sub-protocol was given,
+		// e.g. `ip proto tcp`.
+		if p.subProtocol == filterSubProtocolUnset {
+			b.compareProtocolIP4(onMatch, onMiss)
+			return
+		}
+		ip4Ok := b.newLabel()
+		b.compareProtocolIP4(ip4Ok, onMiss)
+		b.bind(ip4Ok)
+		b.compareIPv4Protocol(p.protoNum(), onMatch, onMiss)
+
+	case filterProtocolIP6:
+		// Bare `ip6` matches any IPv6 packet by EtherType alone, like tcpdump.
+		// Only narrow by next-header when a sub-protocol was given,
+		// e.g. `ip6 proto udp`.
+		if p.subProtocol == filterSubProtocolUnset {
+			b.compareProtocolIP6(onMatch, onMiss)
+			return
+		}
+		ip6Ok := b.newLabel()
+		b.compareProtocolIP6(ip6Ok, onMiss)
+		b.bind(ip6Ok)
+		p.emitIPv6SubProtocol(b, onMatch, onMiss)
+
+	case filterProtocolArp:
+		if !b.layout.hasL2Protocols() {
+			b.emitJump(onMiss)
+			return
+		}
+		arpOk := b.newLabel()
+		b.compareProtocolArp(arpOk, onMiss)
+		b.bind(arpOk)
+		b.emitJump(onMatch)
+
+	case filterProtocolRarp:
+		if !b.layout.hasL2Protocols() {
+			b.emitJump(onMiss)
+			return
+		}
+		rarpOk := b.newLabel()
+		b.compareProtocolRarp(rarpOk, onMiss)
+		b.bind(rarpOk)
+		b.emitJump(onMatch)
+
+	case filterProtocolEther:
+		switch p.subProtocol {
+		case filterSubProtocolIP:
+			b.compareProtocolIP4(onMatch, onMiss)
+		case filterSubProtocolIP6:
+			b.compareProtocolIP6(onMatch, onMiss)
+		case filterSubProtocolArp:
+			b.compareProtocolArp(onMatch, onMiss)
+		case filterSubProtocolRarp:
+			b.compareProtocolRarp(onMatch, onMiss)
+		}
+
+	case filterProtocolUnset:
+		p.emitUnsetProtocol(b, onMatch, onMiss)
+	}
+}
+
 // emitIPv6SubProtocol checks for a sub-protocol in an IPv6 packet.
 func (p primitive) emitIPv6SubProtocol(b *prog, onMatch, onMiss labelID) {
 	switch p.subProtocol {
@@ -459,6 +526,42 @@ func (p primitive) emitIPv6SubProtocol(b *prog, onMatch, onMiss labelID) {
 		b.emitJump(onMatch)
 	default:
 		b.compareIPv6Protocol(p.protoNum(), onMatch, onMiss)
+	}
+}
+
+// emitUnsetProtocol emits the dual-stack sub-protocol checks for
+// filterProtocolUnset with filterKindUnset.
+func (p primitive) emitUnsetProtocol(b *prog, onMatch, onMiss labelID) {
+	switch p.subProtocol {
+	// IPv4-only sub-protocols.
+	case filterSubProtocolIcmp, filterSubProtocolIgmp:
+		ip4Ok := b.newLabel()
+		b.compareProtocolIP4(ip4Ok, onMiss)
+		b.bind(ip4Ok)
+		b.compareIPv4Protocol(p.protoNum(), onMatch, onMiss)
+
+	// IPv6-only sub-protocols.
+	case filterSubProtocolIcmp6:
+		ip6Ok := b.newLabel()
+		b.compareProtocolIP6(ip6Ok, onMiss)
+		b.bind(ip6Ok)
+		b.compareIPv6Protocol(p.protoNum(), onMatch, onMiss)
+
+	// Dual-stack sub-protocols: try IPv6 first, then IPv4.
+	case filterSubProtocolUDP, filterSubProtocolTCP, filterSubProtocolStp,
+		filterSubProtocolPim, filterSubProtocolEsp, filterSubProtocolAh,
+		filterSubProtocolVrrp:
+		tryIP4 := b.newLabel()
+		ip6Ok := b.newLabel()
+		b.compareProtocolIP6(ip6Ok, tryIP4)
+		b.bind(ip6Ok)
+		p.emitIPv6SubProtocol(b, onMatch, onMiss)
+
+		b.bind(tryIP4)
+		ip4Ok := b.newLabel()
+		b.compareProtocolIP4(ip4Ok, onMiss)
+		b.bind(ip4Ok)
+		b.compareIPv4Protocol(p.protoNum(), onMatch, onMiss)
 	}
 }
 
