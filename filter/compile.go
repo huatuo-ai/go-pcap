@@ -235,6 +235,75 @@ func (b *prog) checkIP4Addresses(direction filterDirection, addr []byte, maskChe
 	}
 }
 
+func (b *prog) checkIP6HostAddresses(direction filterDirection, addr net.IP, onMatch, onMiss labelID) {
+	b.checkIP6Addresses(direction, addr, nil, onMatch, onMiss)
+}
+
+func (b *prog) checkIP6NetAddresses(direction filterDirection, addr net.IP, mask net.IPMask, onMatch, onMiss labelID) {
+	b.checkIP6Addresses(direction, addr, mask, onMatch, onMiss)
+}
+
+func (b *prog) checkIP6Addresses(direction filterDirection, addr []byte, mask net.IPMask, onMatch, onMiss labelID) {
+	addrArray := [4]uint32{
+		binary.BigEndian.Uint32(addr[:4]),
+		binary.BigEndian.Uint32(addr[4:8]),
+		binary.BigEndian.Uint32(addr[8:12]),
+		binary.BigEndian.Uint32(addr[12:16]),
+	}
+	switch direction {
+	case filterDirectionSrc:
+		b.loadAndCompareIPv6Address(addrArray, mask, true, onMatch, onMiss)
+	case filterDirectionDst:
+		b.loadAndCompareIPv6Address(addrArray, mask, false, onMatch, onMiss)
+	case filterDirectionSrcOrDst:
+		cont := b.newLabel()
+		b.loadAndCompareIPv6Address(addrArray, mask, true, onMatch, cont)
+		b.bind(cont)
+		b.loadAndCompareIPv6Address(addrArray, mask, false, onMatch, onMiss)
+	case filterDirectionSrcAndDst:
+		cont := b.newLabel()
+		b.loadAndCompareIPv6Address(addrArray, mask, true, cont, onMiss)
+		b.bind(cont)
+		b.loadAndCompareIPv6Address(addrArray, mask, false, onMatch, onMiss)
+	}
+}
+
+func (b *prog) loadAndCompareIPv6Address(addr [4]uint32, mask net.IPMask, source bool, onMatch, onMiss labelID) {
+	maskSize := 128
+	var maskInst bpf.Instruction
+	start := b.layout.l3Off() + intraIP6SrcAddrStart
+	if !source {
+		start = b.layout.l3Off() + intraIP6DstAddrStart
+	}
+	if mask != nil {
+		maskSize, _ = mask.Size()
+		partWords := maskSize % bitsPerWord
+		if partWords != 0 {
+			maskStartOff := (maskSize / bitsPerWord) * 4
+			maskTerm := binary.BigEndian.Uint32(mask[maskStartOff : maskStartOff+4])
+			if maskTerm != 0xffffffff {
+				maskInst = bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: maskTerm}
+			}
+		}
+	}
+
+	bitsUsed := 0
+	for i, a := range addr {
+		b.emit(bpf.LoadAbsolute{Off: start + uint32(i*4), Size: 4})
+		bitsUsed += bitsPerWord
+		if bitsUsed > maskSize && maskInst != nil {
+			b.emit(maskInst)
+		}
+		if bitsUsed >= maskSize {
+			b.emitJumpIf(bpf.JumpEqual, a, onMatch, onMiss)
+			return
+		}
+		cont := b.newLabel()
+		b.emitJumpIf(bpf.JumpEqual, a, cont, onMiss)
+		b.bind(cont)
+	}
+}
+
 // =============================================================================
 // Legacy fixed-offset code generation. Everything below this banner assumes
 // Ethernet framing and hand-counted skip offsets; it is being replaced by the
