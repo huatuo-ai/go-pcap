@@ -684,6 +684,31 @@ func (p primitive) emitNetUnset(b *prog, onMatch, onMiss labelID) {
 	}
 }
 
+func (p primitive) emitMulticast(b *prog, onMatch, onMiss labelID) {
+	switch p.protocol {
+	case filterProtocolUnset, filterProtocolEther:
+		if !b.layout.hasL2Protocols() {
+			b.emitJump(onMiss)
+			return
+		}
+		b.genEtherMulticast(onMatch, onMiss)
+
+	case filterProtocolIP:
+		b.loadEtherKind()
+		ip4Ok := b.newLabel()
+		b.compareProtocolIP4(ip4Ok, onMiss)
+		b.bind(ip4Ok)
+		b.genIPv4Multicast(onMatch, onMiss)
+
+	case filterProtocolIP6:
+		b.loadEtherKind()
+		ip6Ok := b.newLabel()
+		b.compareProtocolIP6(ip6Ok, onMiss)
+		b.bind(ip6Ok)
+		b.genIPv6Multicast(onMatch, onMiss)
+	}
+}
+
 func (p primitive) emitUnset(b *prog, onMatch, onMiss labelID) {
 	b.loadEtherKind()
 
