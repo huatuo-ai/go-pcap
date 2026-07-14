@@ -25,5 +25,14 @@ export GO_PCAP_START_DELAY
 GO_PCAP_PING_COUNT="${GO_PCAP_PING_COUNT:-2}"
 export GO_PCAP_PING_COUNT
 
+# Budget for re-triggering traffic the capture missed while it was still
+# starting up. Must stay below GO_PCAP_CAPTURE_TIMEOUT so retries land while
+# the capture is still listening.
+GO_PCAP_TRIGGER_TIMEOUT="${GO_PCAP_TRIGGER_TIMEOUT:-3}"
+export GO_PCAP_TRIGGER_TIMEOUT
+
+GO_PCAP_TRIGGER_RETRY_DELAY="${GO_PCAP_TRIGGER_RETRY_DELAY:-0.2}"
+export GO_PCAP_TRIGGER_RETRY_DELAY
+
 TEST_LOG_TAG="${TEST_LOG_TAG:-GO-PCAP INTEGRATION}"
 export TEST_LOG_TAG
