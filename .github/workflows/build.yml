@@ -1,0 +1,11 @@
+name: Build
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [master]
+
+jobs:
+  build:
+    name: Build
+    uses: ./.github/workflows/build-reusable.yml

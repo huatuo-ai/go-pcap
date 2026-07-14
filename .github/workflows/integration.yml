@@ -1,0 +1,22 @@
+name: Integration
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [master]
+
+jobs:
+  loopback:
+    name: Loopback capture (L2/L3/L4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - name: Build pcap binary
+        run: make build
+      - name: Run integration tests (loopback, needs CAP_NET_RAW)
+        run: sudo -E env "PATH=$PATH" bash integration/run.sh
