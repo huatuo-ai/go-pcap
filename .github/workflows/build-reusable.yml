@@ -53,7 +53,7 @@ jobs:
         go-version-file: 'go.mod'
         cache: true
     - name: Build binaries
-      run: make build OS=${{ matrix.os }} ARCH=${{ matrix.arch }} GOARM=${{ matrix.arm }} TARGET=${{ matrix.target }}
+      run: make build-artifact BINDIR=dist OS=${{ matrix.os }} ARCH=${{ matrix.arch }} GOARM=${{ matrix.arm }} TARGET=${{ matrix.target }}
     - name: Verify binary target metadata
       run: |
         binary=dist/pcap-${{ matrix.target }}

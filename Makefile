@@ -54,7 +54,7 @@ LOCALBIN := $(TARGETBIN)
 endif
 INSTALLBIN := $(GOBINDIR)/$(BIN)
 
-.PHONY: build clean fmt test integration bench fmt-check lint golangci-lint
+.PHONY: build build-artifact clean fmt test integration bench fmt-check lint golangci-lint
 
 export GO111MODULE=on
 
@@ -66,7 +66,12 @@ $(BINDIR):
 	mkdir -p $@
 
 build: $(LOCALBIN)
-$(LOCALBIN): $(BINDIR)
+
+# build-artifact always includes the target suffix. Release builds use this
+# target so a native build cannot overwrite the target-specific artifact name.
+build-artifact: $(TARGETBIN)
+
+$(HOSTBIN) $(TARGETBIN): $(BINDIR)
 	CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) $(if $(filter arm,$(ARCH)),$(if $(GOARM),GOARM=$(GOARM))) go build -o $@ ./cmd
 
 install: $(INSTALLBIN)
