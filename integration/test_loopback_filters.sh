@@ -4,10 +4,6 @@ set -euo pipefail
 
 source "${ROOT_DIR}/integration/lib.sh"
 
-icmp_trigger() {
-	ping -c "${GO_PCAP_PING_COUNT}" 127.0.0.1 >"${GO_PCAP_TEST_TMPDIR}/icmp.ping" 2>&1
-}
-
 udp_trigger() {
 	local port=${GO_PCAP_TRAFFIC_PORT:?}
 	python3 - "${port}" <<'PY'
