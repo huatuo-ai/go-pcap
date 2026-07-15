@@ -6,6 +6,11 @@
 compiler. It provides a libpcap-like capture surface without CGO, making
 `CGO_ENABLED=0` builds and cross-compilation straightforward.
 
+The following recording shows the `pcap` CLI producing tcpdump-style packet
+summaries:
+
+![go-pcap demo](demo.gif)
+
 ## Why this fork
 
 This project is derived from
