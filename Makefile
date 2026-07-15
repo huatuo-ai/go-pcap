@@ -25,8 +25,10 @@ ifeq ($(ARCH),x86_64)
     override ARCH=amd64
 endif
 
-BINDIR := ./dist
-BIN := pcap
+# The default build creates the pcap binary in the project root.
+# Set BINDIR to place build artifacts elsewhere when needed.
+BINDIR ?= .
+BIN ?= pcap
 # TARGET labels an artifact independently of the Go target tuple. Keep the
 # supported 32-bit ARM baselines explicit so a v7 binary is never mislabeled
 # as suitable for v6.
@@ -39,7 +41,17 @@ TARGETARCH := armv$(GOARM)
 endif
 TARGET ?= $(OS)-$(TARGETARCH)
 GOBINDIR ?= $(shell go env GOPATH)/bin
-LOCALBIN := $(BINDIR)/$(BIN)-$(TARGET)
+HOSTBIN := $(BINDIR)/$(BIN)
+TARGETBIN := $(BINDIR)/$(BIN)-$(TARGET)
+ifeq ($(OS),$(BUILDOS))
+ifeq ($(ARCH),$(BUILDARCH))
+LOCALBIN := $(HOSTBIN)
+else
+LOCALBIN := $(TARGETBIN)
+endif
+else
+LOCALBIN := $(TARGETBIN)
+endif
 INSTALLBIN := $(GOBINDIR)/$(BIN)
 
 .PHONY: build clean fmt test integration bench fmt-check lint golangci-lint
@@ -53,18 +65,16 @@ GOFILES := $(shell find . -name '*.go' | grep -v go/pkg/mod)
 $(BINDIR):
 	mkdir -p $@
 
-build: $(LOCALBIN) $(BIN)
+build: $(LOCALBIN)
 $(LOCALBIN): $(BINDIR)
 	CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) $(if $(filter arm,$(ARCH)),$(if $(GOARM),GOARM=$(GOARM))) go build -o $@ ./cmd
-$(BIN):
-	@if [ "$(OS)" = "$(BUILDOS)" -a "$(ARCH)" = "$(BUILDARCH)" -a ! -e "$@" ]; then ln -s $(LOCALBIN) $@; fi
 
 install: $(INSTALLBIN)
 $(INSTALLBIN):
 	CGO_ENABLED=0 go build -o $@
 
 clean:
-	@rm -rf $(BIN) $(BINDIR)
+	@rm -f $(HOSTBIN) $(TARGETBIN)
 
 fmt:
 	gofmt -w -s $(GOFILES)

@@ -176,12 +176,14 @@ make build
 ```
 
 Cross-compilation is supported through the `OS` and `ARCH` Makefile variables.
-Build artifacts are written under `dist/`. For 32-bit Linux ARM, select the
-ABI level explicitly:
+By default, the host executable is available as `./pcap` in the project
+root. Target-specific artifacts are also written to the project root; set
+`BINDIR` to place them elsewhere. For 32-bit Linux ARM, select the ABI level
+explicitly:
 
 ```sh
-make build OS=linux ARCH=arm GOARM=6 # dist/pcap-linux-armv6
-make build OS=linux ARCH=arm GOARM=7 # dist/pcap-linux-armv7
+make build OS=linux ARCH=arm GOARM=6 # pcap-linux-armv6
+make build OS=linux ARCH=arm GOARM=7 # pcap-linux-armv7
 ```
 
 An ARMv7 binary must not be deployed to an ARMv6 device. The release matrix

@@ -166,12 +166,13 @@ make build
 ./pcap --help
 ```
 
-Makefile 支持通过 `OS` 和 `ARCH` 变量进行交叉编译，构建产物位于 `dist/`。32 位
-Linux ARM 必须显式选择 ABI 级别：
+Makefile 支持通过 `OS` 和 `ARCH` 变量进行交叉编译。默认的主机可执行文件为项目根
+目录下的 `./pcap`；目标特定产物也默认位于项目根目录，可通过 `BINDIR` 指定其他
+目录。32 位 Linux ARM 必须显式选择 ABI 级别：
 
 ```sh
-make build OS=linux ARCH=arm GOARM=6 # dist/pcap-linux-armv6
-make build OS=linux ARCH=arm GOARM=7 # dist/pcap-linux-armv7
+make build OS=linux ARCH=arm GOARM=6 # pcap-linux-armv6
+make build OS=linux ARCH=arm GOARM=7 # pcap-linux-armv7
 ```
 
 ARMv7 二进制不能部署到 ARMv6 设备。当前发布矩阵不提供 soft-float ARM 构建产物。
