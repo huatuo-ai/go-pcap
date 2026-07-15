@@ -5,7 +5,7 @@
 `go-pcap` 是一个原生 Go 的抓包库和 tcpdump 风格 cBPF 过滤编译器。它不依赖
 CGO，因此可以方便地使用 `CGO_ENABLED=0` 构建和交叉编译。
 
-下方演示展示了 `pcap` CLI 输出 tcpdump 风格的抓包摘要：
+下方演示展示 `pcap` CLI 通过一条 L3 感知的 cBPF 过滤表达式抓取 loopback 流量，并输出 tcpdump 兼容的抓包摘要：
 
 ![go-pcap 演示](demo.gif)
 

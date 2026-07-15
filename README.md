@@ -6,8 +6,8 @@
 compiler. It provides a libpcap-like capture surface without CGO, making
 `CGO_ENABLED=0` builds and cross-compilation straightforward.
 
-The following recording shows the `pcap` CLI producing tcpdump-style packet
-summaries:
+The following recording shows the `pcap` CLI capturing live loopback traffic
+through an L3-aware cBPF filter, printing tcpdump-compatible packet summaries:
 
 ![go-pcap demo](demo.gif)
 
