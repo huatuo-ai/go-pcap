@@ -129,9 +129,8 @@ func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, 
 	if err != nil {
 		return nil, ci, fmt.Errorf("error reading bpf header: %v", err)
 	}
-	// TODO: add CaptureInfo, specifically:
-	//    capture timestamp
 	ci = gopacket.CaptureInfo{
+		Timestamp:      time.Now(),
 		CaptureLength:  int(hdr.Caplen),
 		Length:         int(hdr.Datalen),
 		InterfaceIndex: h.index,

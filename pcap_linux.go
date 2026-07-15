@@ -182,14 +182,13 @@ func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, 
 		b = append(append(b[:14], aux...), b[14:]...)
 		n = n + 4
 	}
-	// TODO: add CaptureInfo, specifically:
-	//    capture timestamp
-	//    original packet length
 	ci = gopacket.CaptureInfo{
+		Timestamp:      time.Now(),
 		CaptureLength:  n,
+		Length:         n,
 		InterfaceIndex: h.index,
 	}
-	return b, ci, nil
+	return b[:n], ci, nil
 }
 
 func (h *Handle) readPacketDataMmap() ([]captured, error) {

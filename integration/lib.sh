@@ -37,17 +37,6 @@ dump_logs_and_fail() {
 	fatal "$*"
 }
 
-assert_layer() {
-	local out=$1
-	local err=$2
-	local idx=$3
-	local want=$4
-	local name=$5
-
-	grep -q "PACKET LAYER ${idx}: ${want}" "${out}" ||
-		dump_logs_and_fail "${out}" "${err}" "${name}: expected L@${idx}=${want} not decoded"
-}
-
 # Re-send traffic until the capture actually observes it. Firing once after a
 # fixed delay races with capture startup: on a slow host the socket is not yet
 # listening, the packets are gone for good, and the case fails for no real
@@ -60,10 +49,10 @@ trigger_until_captured() {
 	local deadline=$((SECONDS + GO_PCAP_TRIGGER_TIMEOUT))
 	while :; do
 		# A trigger that fails is exactly what the retry is for, so it must not
-		# trip set -e. Giving up is reported by the caller's layer assertions,
+		# trip set -e. Giving up is reported by the caller's output assertions,
 		# which dump the capture logs alongside the failure.
 		"${trigger}" || true
-		grep -q "${marker}" "${out}" && return 0
+		grep -Fq "${marker}" "${out}" && return 0
 		((SECONDS < deadline)) || return 1
 		sleep "${GO_PCAP_TRIGGER_RETRY_DELAY}"
 	done
@@ -107,22 +96,22 @@ run_capture_case() {
 	local name=$1
 	local filter=$2
 	local trigger=$3
-	local expected_layer=$4
+	local expected_summary=$4
 	shift 4
 
 	local out="${GO_PCAP_TEST_TMPDIR}/${name}.out"
 	local err="${GO_PCAP_TEST_TMPDIR}/${name}.err"
 
 	log_info "${name}: capture filter=${filter}"
-	timeout "${GO_PCAP_CAPTURE_TIMEOUT}" "${GO_PCAP_BIN}" -i lo "$@" "${filter}" >"${out}" 2>"${err}" &
+	timeout "${GO_PCAP_CAPTURE_TIMEOUT}" "${GO_PCAP_BIN}" -nn -i lo "$@" "${filter}" >"${out}" 2>"${err}" &
 	local capture_pid=$!
 
 	sleep "${GO_PCAP_START_DELAY}"
 	kill -0 "${capture_pid}" 2>/dev/null || dump_logs_and_fail "${out}" "${err}" "${name}: capture exited before traffic"
 
-	# Let the layer assertions below report the failure: they dump the capture
+	# Let the output assertions below report the failure: they dump the capture
 	# logs, which a bare set -e abort here would swallow.
-	trigger_until_captured "${trigger}" "${out}" "PACKET LAYER 2: ${expected_layer}" || true
+	trigger_until_captured "${trigger}" "${out}" "${expected_summary}" || true
 
 	set +e
 	wait "${capture_pid}"
@@ -133,14 +122,16 @@ run_capture_case() {
 		dump_logs_and_fail "${out}" "${err}" "${name}: capture exited with ${status}, expected timeout exit 124"
 	fi
 
-	grep -q "PACKET LAYER 2: ${expected_layer}" "${out}" ||
-		dump_logs_and_fail "${out}" "${err}" "${name}: expected layer ${expected_layer} was not captured"
+	grep -Fq "${expected_summary}" "${out}" ||
+		dump_logs_and_fail "${out}" "${err}" "${name}: expected tcpdump summary ${expected_summary} was not captured"
 
-	assert_layer "${out}" "${err}" 0 "Ethernet" "${name}"
-	assert_layer "${out}" "${err}" 1 "IPv4" "${name}"
-
-	grep -q "From src \\[127 0 0 1\\] to dst \\[127 0 0 1\\]" "${out}" ||
+	grep -Eq '^[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6} IP 127\.0\.0\.1 > 127\.0\.0\.1:' "${out}" ||
 		dump_logs_and_fail "${out}" "${err}" "${name}: loopback IPv4 packet was not captured"
+
+	if [[ " $* " == *" -e "* ]]; then
+		grep -Fq "ethertype IPv4 (0x0800)" "${out}" ||
+			dump_logs_and_fail "${out}" "${err}" "${name}: Ethernet header was not printed"
+	fi
 
 	log_info "${name}: PASS"
 }
@@ -149,22 +140,22 @@ run_capture_case_l3() {
 	local name=$1
 	local filter=$2
 	local trigger=$3
-	local l3_type=$4
-	local l4_type=$5
+	local ip_prefix=$4
+	local expected_summary=$5
 	shift 5
 
 	local out="${GO_PCAP_TEST_TMPDIR}/${name}.out"
 	local err="${GO_PCAP_TEST_TMPDIR}/${name}.err"
 
 	log_info "${name}: capture filter=${filter}"
-	timeout "${GO_PCAP_CAPTURE_TIMEOUT}" "${GO_PCAP_BIN}" -i lo "$@" "${filter}" >"${out}" 2>"${err}" &
+	timeout "${GO_PCAP_CAPTURE_TIMEOUT}" "${GO_PCAP_BIN}" -nn -i lo "$@" "${filter}" >"${out}" 2>"${err}" &
 	local capture_pid=$!
 
 	sleep "${GO_PCAP_START_DELAY}"
 	kill -0 "${capture_pid}" 2>/dev/null ||
 		dump_logs_and_fail "${out}" "${err}" "${name}: capture exited before traffic"
 
-	trigger_until_captured "${trigger}" "${out}" "PACKET LAYER 2: ${l4_type}" || true
+	trigger_until_captured "${trigger}" "${out}" "${expected_summary}" || true
 
 	set +e
 	wait "${capture_pid}"
@@ -175,9 +166,11 @@ run_capture_case_l3() {
 		dump_logs_and_fail "${out}" "${err}" "${name}: capture exited with ${status}, expected timeout exit 124"
 	fi
 
-	assert_layer "${out}" "${err}" 0 "Ethernet" "${name}"
-	assert_layer "${out}" "${err}" 1 "${l3_type}" "${name}"
-	assert_layer "${out}" "${err}" 2 "${l4_type}" "${name}"
+	grep -Fq "${expected_summary}" "${out}" ||
+		dump_logs_and_fail "${out}" "${err}" "${name}: expected tcpdump summary ${expected_summary} was not captured"
+
+	grep -Eq "^[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6} ${ip_prefix} ::1 > ::1:" "${out}" ||
+		dump_logs_and_fail "${out}" "${err}" "${name}: IPv6 loopback packet was not captured"
 
 	log_info "${name}: PASS"
 }

@@ -166,6 +166,17 @@ make build
 ./pcap --help
 ```
 
+CLI 对常见的 Ethernet、ARP、IPv4、IPv6、TCP、UDP 和 ICMP 流量输出 tcpdump 风格
+摘要。常用显示参数与 tcpdump 4.99.x 兼容：`-i`、`-c`、`-n`/`-nn`、`-q`、
+`-v`、`-e`、`-X`、`-A`、`-s` 和 `-p`。脚本中建议使用 `-nn`，以保
+持主机名和服务名均为数字形式，保证输出稳定。
+
+```sh
+./pcap -nn -i eth0 -c 10 'tcp port 443'
+```
+
+该 CLI 仅支持实时抓包；读取/写入 pcap 文件及较少使用的 tcpdump 参数暂未实现。
+
 Makefile 支持通过 `OS` 和 `ARCH` 变量进行交叉编译。默认的主机可执行文件为项目根
 目录下的 `./pcap`；目标特定产物也默认位于项目根目录，可通过 `BINDIR` 指定其他
 目录。32 位 Linux ARM 必须显式选择 ABI 级别：

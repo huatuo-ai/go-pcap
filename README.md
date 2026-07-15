@@ -175,6 +175,19 @@ make build
 ./pcap --help
 ```
 
+The CLI prints tcpdump-style packet summaries for common Ethernet, ARP, IPv4,
+IPv6, TCP, UDP, and ICMP traffic. Its common display switches are compatible
+with tcpdump 4.99.x: `-i`, `-c`, `-n`/`-nn`, `-q`, `-v`, `-e`,
+`-X`, `-A`, `-s`, and `-p`. Use `-nn` when scripting so host and service names
+remain numeric and output is deterministic.
+
+```sh
+./pcap -nn -i eth0 -c 10 'tcp port 443'
+```
+
+This is a live-capture CLI; pcap file read/write modes and the less common
+tcpdump switches are not implemented.
+
 Cross-compilation is supported through the `OS` and `ARCH` Makefile variables.
 By default, the host executable is available as `./pcap` in the project
 root. Target-specific artifacts are also written to the project root; set

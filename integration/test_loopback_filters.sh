@@ -64,9 +64,9 @@ run_protocol_cases() {
 	local tcp_port
 	tcp_port="$(pick_loopback_port)"
 
-	run_capture_case "icmp-${mode}" "icmp" icmp_trigger "ICMPv4" "$@"
-	GO_PCAP_TRAFFIC_PORT="${udp_port}" run_capture_case "udp-${mode}" "udp and port ${udp_port}" udp_trigger "UDP" "$@"
-	GO_PCAP_TRAFFIC_PORT="${tcp_port}" run_capture_case "tcp-${mode}" "tcp and port ${tcp_port}" tcp_trigger "TCP" "$@"
+	run_capture_case "icmp-${mode}" "icmp" icmp_trigger "ICMP echo" "$@"
+	GO_PCAP_TRAFFIC_PORT="${udp_port}" run_capture_case "udp-${mode}" "udp and port ${udp_port}" udp_trigger "UDP, length" "$@"
+	GO_PCAP_TRAFFIC_PORT="${tcp_port}" run_capture_case "tcp-${mode}" "tcp and port ${tcp_port}" tcp_trigger "Flags [" "$@"
 }
 
 run_protocol_cases mmap
