@@ -23,7 +23,7 @@ if your module cache is empty.
 | `make build` | Build the `pcap` command-line utility. |
 | `make test` | Run the Go test suite. |
 | `make lint` | Run golangci-lint. |
-| `make fmt-check` | Check Go formatting without modifying files. |
+| `make fmt-check` | Check Go imports/formatting, the `interface{} → any` rewrite, and tracked Shell scripts without modifying files. |
 | `make vet` | Run `go vet ./...`. |
 | `make bench` | Run repeatable filter benchmarks. |
 | `make integration` | Run the loopback capture entry point; it skips without capture privilege. |

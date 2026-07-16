@@ -19,8 +19,9 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/huatuo-ai/go-pcap/filter"
 	"golang.org/x/net/bpf"
+
+	"github.com/huatuo-ai/go-pcap/filter"
 )
 
 func main() {

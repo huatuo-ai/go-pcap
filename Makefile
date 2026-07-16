@@ -54,13 +54,21 @@ LOCALBIN := $(TARGETBIN)
 endif
 INSTALLBIN := $(GOBINDIR)/$(BIN)
 
-.PHONY: build build-artifact clean fmt test integration bench fmt-check lint golangci-lint
+.PHONY: build build-artifact clean fmt test integration bench fmt-check lint golangci-lint format-tools
 
 export GO111MODULE=on
 
 LINTER ?= $(GOBINDIR)/golangci-lint
 LINTER_VERSION ?= v2.5.0
-GOFILES := $(shell find . -name '*.go' | grep -v go/pkg/mod)
+GOIMPORTS ?= $(GOBINDIR)/goimports
+GOIMPORTS_VERSION ?= v0.38.0
+GOFUMPT ?= $(GOBINDIR)/gofumpt
+GOFUMPT_VERSION ?= v0.9.1
+SHFMT ?= $(GOBINDIR)/shfmt
+SHFMT_VERSION ?= v3.12.0
+MODULE_PATH := github.com/huatuo-ai/go-pcap
+GOFILES := $(shell git ls-files '*.go')
+SHELLFILES := $(shell git ls-files '*.sh')
 
 $(BINDIR):
 	mkdir -p $@
@@ -81,12 +89,25 @@ $(INSTALLBIN):
 clean:
 	@rm -f $(HOSTBIN) $(TARGETBIN)
 
-fmt:
-	gofmt -w -s $(GOFILES)
+format-tools:
+	@GOBIN=$(GOBINDIR) go install golang.org/x/tools/cmd/goimports@$(GOIMPORTS_VERSION)
+	@GOBIN=$(GOBINDIR) go install mvdan.cc/gofumpt@$(GOFUMPT_VERSION)
+	@GOBIN=$(GOBINDIR) go install mvdan.cc/sh/v3/cmd/shfmt@$(SHFMT_VERSION)
 
-fmt-check:
-	@FMTOUT=$$(gofmt -l $(GOFILES)); \
-	if [ -n "$${FMTOUT}" ]; then echo $${FMTOUT}; exit 1; fi
+fmt: format-tools
+	$(GOIMPORTS) -w -local $(MODULE_PATH) $(GOFILES)
+	$(GOFUMPT) -w $(GOFILES)
+	gofmt -w -r 'interface{} -> any' $(GOFILES)
+	$(SHFMT) -i 0 -w $(SHELLFILES)
+
+fmt-check: format-tools
+	@FMTOUT=$$($(GOIMPORTS) -l -local $(MODULE_PATH) $(GOFILES)); \
+	if [ -n "$${FMTOUT}" ]; then echo "$${FMTOUT}"; exit 1; fi
+	@FMTOUT=$$($(GOFUMPT) -l $(GOFILES)); \
+	if [ -n "$${FMTOUT}" ]; then echo "$${FMTOUT}"; exit 1; fi
+	@FMTOUT=$$(gofmt -l -r 'interface{} -> any' $(GOFILES)); \
+	if [ -n "$${FMTOUT}" ]; then echo "$${FMTOUT}"; exit 1; fi
+	@$(SHFMT) -i 0 -d $(SHELLFILES)
 
 vet:
 	go vet ./...
