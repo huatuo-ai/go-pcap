@@ -142,7 +142,7 @@ func Compile(expr string, lt LinkType) ([]bpf.Instruction, error) {
 	}
 	insns, err := f.Compile(layout)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", ErrInvalidFilter, err)
 	}
 	// If the entire compiled filter on a non-L2 link type is just
 	// 2 instructions (returnDrop, returnKeep), the whole expression
@@ -173,5 +173,6 @@ func Size(expr string, lt LinkType) (int, error) {
 	if f == nil {
 		return 0, fmt.Errorf("%w: %q", ErrInvalidFilter, expr)
 	}
+
 	return int(f.Size(layout)), nil
 }

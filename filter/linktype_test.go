@@ -147,6 +147,13 @@ func TestDLT_RAW_l2Only(t *testing.T) {
 	}
 }
 
+func TestCompileInvalidFilter(t *testing.T) {
+	_, err := Compile("host", LinkTypeEthernet)
+	if !errors.Is(err, ErrInvalidFilter) {
+		t.Fatalf("Compile() error = %v, want ErrInvalidFilter", err)
+	}
+}
+
 func TestSizeInvariant(t *testing.T) {
 	testCases := []struct {
 		expr string
