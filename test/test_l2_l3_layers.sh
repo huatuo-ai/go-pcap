@@ -2,8 +2,8 @@
 
 set -euo pipefail
 
-source "${ROOT_DIR}/integration/env.sh"
-source "${ROOT_DIR}/integration/lib.sh"
+source "${ROOT_DIR}/test/env.sh"
+source "${ROOT_DIR}/test/lib.sh"
 
 run_capture_case "l2-ethernet-mmap" "icmp" icmp_trigger "ICMP echo" -e
 run_capture_case "l2-ethernet-syscalls" "icmp" icmp_trigger "ICMP echo" -e --syscalls

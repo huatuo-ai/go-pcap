@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-source "${ROOT_DIR}/integration/lib.sh"
+source "${ROOT_DIR}/test/lib.sh"
 
 udp_trigger() {
 	local port=${GO_PCAP_TRAFFIC_PORT:?}

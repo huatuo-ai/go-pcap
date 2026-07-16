@@ -9,14 +9,14 @@ if [[ ${EUID} -ne 0 ]]; then
 	exit 0
 fi
 
-source "./integration/env.sh"
-source "${ROOT_DIR}/integration/lib.sh"
+source "./test/env.sh"
+source "${ROOT_DIR}/test/lib.sh"
 
 trap "integration_test_teardown \$?" EXIT
 
 integration_test_setup
 
-for case in "${ROOT_DIR}"/integration/test_*.sh; do
+for case in "${ROOT_DIR}"/test/test_*.sh; do
 	[[ -f "${case}" ]] || continue
 	log_info "start: $(basename "${case}")"
 

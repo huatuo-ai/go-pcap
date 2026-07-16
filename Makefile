@@ -103,7 +103,7 @@ test:
 	go test ./...
 
 integration: build
-	@bash integration/run.sh
+	@bash test/run.sh
 
 bench:
 	go test ./filter -run '^$$' -bench . -benchmem -count=10

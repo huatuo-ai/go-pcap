@@ -19,4 +19,4 @@ jobs:
       - name: Build pcap binary
         run: make build
       - name: Run integration tests (loopback, needs CAP_NET_RAW)
-        run: sudo -E env "PATH=$PATH" bash integration/run.sh
+        run: sudo -E env "PATH=$PATH" bash test/run.sh
