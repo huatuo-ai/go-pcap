@@ -224,6 +224,13 @@ Issues and pull requests are welcome, especially for new protocol support,
 link types, compatibility cases, and performance work. Please run `make test`
 and the relevant `make bench` cases before submitting a change.
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local checks and pull-request
+expectations. The [documentation](docs/index.md) includes deeper guides for the
+[architecture](docs/concepts/architecture.md), [compiler
+internals](docs/concepts/compiler-internals.md), [new filter
+primitives](docs/contributing/new-primitive.md), and
+[testing](docs/contributing/testing.md).
+
 ## Acknowledgments and license
 
 The original capture library is derived from

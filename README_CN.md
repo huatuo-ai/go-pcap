@@ -205,6 +205,10 @@ mmap/TPACKET_V3 路径，但不会取消抓包权限要求。`RAW` 是“报文�
 欢迎提交 issue 和 PR，尤其是新的协议、LinkType、兼容性用例和性能改进。提交前请
 运行 `make test`，并在相关改动中运行 `make bench`。
 
+本地检查和 PR 约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。更完整的英文文档见
+[docs](docs/index.md)，其中包括[架构](docs/concepts/architecture.md)、[编译器内幕](docs/concepts/compiler-internals.md)、
+[新增 filter primitive](docs/contributing/new-primitive.md)、[测试](docs/contributing/testing.md)。
+
 ## 致谢与许可证
 
 原始抓包库来自 [packetcap/go-pcap](https://github.com/packetcap/go-pcap)。面向 L3 的
