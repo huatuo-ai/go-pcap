@@ -34,7 +34,6 @@ type Handle struct {
 	promiscuous bool //nolint: unused
 	timeout     time.Duration
 	index       int
-	snaplen     int32
 	fd          int
 	buf         []byte
 	endian      binary.ByteOrder
@@ -65,12 +64,24 @@ func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, 
 	rfd := pipefd[0]
 	wfd := pipefd[1]
 
-	defer unix.Close(rfd)
-	defer unix.Close(wfd)
+	defer func() {
+		if closeErr := unix.Close(rfd); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("close read pipe: %w", closeErr))
+		}
+	}()
+	defer func() {
+		if closeErr := unix.Close(wfd); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("close write pipe: %w", closeErr))
+		}
+	}()
 
 	// Make pipe non-blocking
-	_ = unix.SetNonblock(rfd, true)
-	_ = unix.SetNonblock(wfd, true)
+	if err := unix.SetNonblock(rfd, true); err != nil {
+		return nil, ci, fmt.Errorf("set read pipe non-blocking: %w", err)
+	}
+	if err := unix.SetNonblock(wfd, true); err != nil {
+		return nil, ci, fmt.Errorf("set write pipe non-blocking: %w", err)
+	}
 
 	// Goroutine to signal cancellation
 	done := make(chan struct{})
@@ -102,7 +113,7 @@ func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, 
 	}
 	n, err := unix.Poll(pfd, ms)
 	if err != nil {
-		if err == unix.EINTR {
+		if errors.Is(err, unix.EINTR) {
 			return nil, ci, h.context.Err()
 		}
 		return nil, ci, err
@@ -117,7 +128,7 @@ func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, 
 
 	read, err := unix.Read(h.fd, h.buf)
 	if err != nil {
-		return nil, ci, fmt.Errorf("error reading: %v", err)
+		return nil, ci, fmt.Errorf("read packet: %w", err)
 	}
 	if read <= 0 {
 		return nil, ci, fmt.Errorf("read no packets")
@@ -127,7 +138,7 @@ func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, 
 	buf := bytes.NewBuffer(h.buf[:unix.SizeofBpfHdr])
 	err = binary.Read(buf, h.endian, &hdr)
 	if err != nil {
-		return nil, ci, fmt.Errorf("error reading bpf header: %v", err)
+		return nil, ci, fmt.Errorf("read BPF header: %w", err)
 	}
 	ci = gopacket.CaptureInfo{
 		Timestamp:      time.Now(),
@@ -155,15 +166,21 @@ func (h *Handle) Close() {
 // set a classic BPF filter on the listener. filter must be compliant with
 // tcpdump syntax.
 func (h *Handle) setFilter() error {
+	if len(h.filter) == 0 {
+		return errors.New("cannot install empty BPF filter")
+	}
+
 	/*
 	 * Try to install the kernel filter.
 	 */
 	prog := BpfProgram{
-		Len:    uint32(len(h.filter)),
+		Len: uint32(len(h.filter)),
+		// #nosec G103 -- BIOCSETF synchronously copies this non-empty Go-owned slice.
 		Filter: (*bpf.RawInstruction)(unsafe.Pointer(&h.filter[0])),
 	}
+	// #nosec G103 -- ioctl receives the address of prog only for this synchronous call.
 	if err := ioctlPtr(h.fd, unix.BIOCSETF, unsafe.Pointer(&prog)); err != nil {
-		return fmt.Errorf("unable to set filter: %v", err)
+		return fmt.Errorf("set BPF filter: %w", err)
 	}
 
 	return nil
@@ -184,7 +201,6 @@ func openLive(ctx context.Context, iface string, snaplen int32, promiscuous bool
 	logger.Debug("started")
 	h := Handle{
 		context:  ctx,
-		snaplen:  snaplen,
 		syscalls: syscalls,
 	}
 	// we need to know our endianness
@@ -197,14 +213,14 @@ func openLive(ctx context.Context, iface string, snaplen int32, promiscuous bool
 	// open the bpf device
 	for i := 0; i < 255; i++ {
 		dev := fmt.Sprintf("/dev/bpf%d", i)
-		fd, err = unix.Open(dev, unix.O_RDWR, 0000)
+		fd, err = unix.Open(dev, unix.O_RDWR, 0o000)
 		if fd > -1 {
 			break
 		}
-		if err != nil && err == unix.EBUSY {
+		if errors.Is(err, unix.EBUSY) {
 			continue
 		}
-		return nil, fmt.Errorf("error opening device %s: %v", dev, err)
+		return nil, fmt.Errorf("open device %s: %w", dev, err)
 	}
 	if fd <= -1 {
 		return nil, errors.New("failed to get valid bpf device")
@@ -213,26 +229,26 @@ func openLive(ctx context.Context, iface string, snaplen int32, promiscuous bool
 
 	// set the options
 	if err = SetBpfInterface(fd, iface); err != nil {
-		return nil, fmt.Errorf("failed to set the BPF interface: %v", err)
+		return nil, fmt.Errorf("set BPF interface: %w", err)
 	}
 	if err = SetBpfHeadercmpl(fd, enable); err != nil {
-		return nil, fmt.Errorf("failed to set the BPF header complete option: %v", err)
+		return nil, fmt.Errorf("set BPF header complete option: %w", err)
 	}
 	if err = SetBpfMonitor(fd, enable); err != nil {
-		return nil, fmt.Errorf("failed to set the BPF monitor option: %v", err)
+		return nil, fmt.Errorf("set BPF monitor option: %w", err)
 	}
 	if err = SetBpfImmediate(fd, enable); err != nil {
-		return nil, fmt.Errorf("failed to set the BPF immediate return option: %v", err)
+		return nil, fmt.Errorf("set BPF immediate return option: %w", err)
 	}
 	size, err := BpfBuflen(fd)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read buffer length: %v", err)
+		return nil, fmt.Errorf("read buffer length: %w", err)
 	}
 	h.buf = make([]byte, size)
 
 	linkType, err := getLinkType(fd)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get link type: %v", err)
+		return nil, fmt.Errorf("get link type: %w", err)
 	}
 	h.linkType = linkType
 
@@ -251,7 +267,8 @@ type ivalue struct {
 
 func SetBpfInterface(fd int, name string) error {
 	var iv ivalue
-	copy(iv.name[:], []byte(name))
+	copy(iv.name[:], name)
+	// #nosec G103 -- ioctl reads iv only for the duration of this call.
 	return ioctlPtr(fd, unix.BIOCSETIF, unsafe.Pointer(&iv))
 }
 
@@ -266,22 +283,25 @@ func SetBpfImmediate(fd, m int) error {
 func SetBpfMonitor(fd, m int) error {
 	return unix.IoctlSetPointerInt(fd, unix.BIOCSSEESENT, m)
 }
+
 func BpfBuflen(fd int) (int, error) {
 	return unix.IoctlGetInt(fd, unix.BIOCGBLEN)
 }
+
 func ioctlPtr(fd, arg int, valPtr unsafe.Pointer) error {
 	//nolint:staticcheck // unix.SYS_IOCTL is deprecated, but golang does not provide a better alternative
 	// as of this writing for passing pointers
 	_, _, errno := unix.RawSyscall(unix.SYS_IOCTL, uintptr(fd), uintptr(arg), uintptr(valPtr))
 	if errno != 0 {
-		return fmt.Errorf("error: %d", errno)
+		return fmt.Errorf("ioctl %#x: %w", arg, errno)
 	}
 	return nil
 }
+
 func getLinkType(fd int) (uint32, error) {
 	linkType, err := unix.IoctlGetInt(fd, unix.BIOCGDLT)
 	if err != nil {
-		return 0xffffffff, fmt.Errorf("failed to get link type: %v", err)
+		return 0xffffffff, fmt.Errorf("get link type: %w", err)
 	}
 	return uint32(linkType), nil
 }

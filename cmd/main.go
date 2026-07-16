@@ -79,12 +79,14 @@ var rootCmd = &cobra.Command{
 		if device == "" {
 			device = "any"
 		}
-		fmt.Fprintf(
+		if _, err := fmt.Fprintf(
 			cmd.ErrOrStderr(),
 			"tcpdump: listening on %s, link-type EN10MB (Ethernet), snapshot length %d bytes\n",
 			device,
 			snaplen,
-		)
+		); err != nil {
+			return fmt.Errorf("write capture status: %w", err)
+		}
 
 		printer := newTCPDumpPrinter(tcpdumpOptions{
 			numeric:   numeric,
@@ -106,7 +108,9 @@ var rootCmd = &cobra.Command{
 
 			packet := gopacket.NewPacket(data, layers.LinkType(handle.LinkType()), gopacket.Default)
 			packet.Metadata().CaptureInfo = captureInfo
-			fmt.Fprintln(cmd.OutOrStdout(), printer.format(packet))
+			if _, err := fmt.Fprintln(cmd.OutOrStdout(), printer.format(packet)); err != nil {
+				return fmt.Errorf("write packet summary: %w", err)
+			}
 
 			captured++
 			if packetCount > 0 && captured >= packetCount {

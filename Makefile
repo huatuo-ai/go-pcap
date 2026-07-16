@@ -59,7 +59,7 @@ INSTALLBIN := $(GOBINDIR)/$(BIN)
 export GO111MODULE=on
 
 LINTER ?= $(GOBINDIR)/golangci-lint
-LINTER_VERSION ?= v1.23.3
+LINTER_VERSION ?= v2.5.0
 GOFILES := $(shell find . -name '*.go' | grep -v go/pkg/mod)
 
 $(BINDIR):
@@ -91,9 +91,10 @@ fmt-check:
 vet:
 	go vet ./...
 
-golangci-lint: $(LINTER)
-$(LINTER):
-	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(GOBINDIR) $(LINTER_VERSION)
+golangci-lint:
+	@if ! $(LINTER) version 2>/dev/null | grep -q "version $(LINTER_VERSION)"; then \
+		GOBIN=$(GOBINDIR) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(LINTER_VERSION); \
+	fi
 
 ## Lint the files
 lint: golangci-lint

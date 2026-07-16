@@ -3,11 +3,9 @@ package pcap
 import (
 	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
-	"unsafe"
 
 	"github.com/gopacket/gopacket"
 	"golang.org/x/net/bpf"
@@ -67,11 +65,11 @@ func (h *Handle) SetBPFFilter(expr string) error {
 	}
 	instructions, err := filter.Compile(expr2, filter.LinkTypeEthernet)
 	if err != nil {
-		return fmt.Errorf("failed to compile filter into instructions: %v", err)
+		return fmt.Errorf("compile filter into instructions: %w", err)
 	}
 	raw, err := bpf.Assemble(instructions)
 	if err != nil {
-		return fmt.Errorf("bpf assembly failed: %v", err)
+		return fmt.Errorf("assemble BPF instructions: %w", err)
 	}
 	return h.SetRawBPFFilter(raw)
 }
@@ -83,20 +81,10 @@ func (h *Handle) SetRawBPFFilter(raw []bpf.RawInstruction) error {
 
 // getEndianness discover the endianness of our current system
 func getEndianness() (binary.ByteOrder, error) {
-	buf := [2]byte{}
-	*(*uint16)(unsafe.Pointer(&buf[0])) = uint16(0xABCD)
-
-	switch buf {
-	case [2]byte{0xCD, 0xAB}:
-		return binary.LittleEndian, nil
-	case [2]byte{0xAB, 0xCD}:
-		return binary.BigEndian, nil
-	default:
-		return nil, errors.New("could not determine native endianness")
-	}
+	return binary.NativeEndian, nil
 }
 
-// nolint: unused
+//nolint:unused
 func htons(in uint16) uint16 {
 	return (in<<8)&0xff00 | in>>8
 }

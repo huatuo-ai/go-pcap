@@ -22,7 +22,6 @@ const (
 )
 
 func enableLogs() {
-
 	log.SetReportCaller(true)
 	log.SetLevel(log.TraceLevel)
 	log.SetFormatter(&log.TextFormatter{
@@ -48,9 +47,9 @@ func Test_simpleMsg(t *testing.T) {
 	dstPorts := runPublisher(t, localhost, wg, &keepGoing)
 	filter := ""
 	// Right now adding these filters causes a race condition caught by 'go test -race' and doesn't exit
-	//filter = fmt.Sprintf("dst port %d", dstPorts)
-	//filter = fmt.Sprintf("udp and dst port %d", dstPorts)
-	//filter = fmt.Sprintf("udp and dst port %d and dst host %s", dstPorts, localhost.String())
+	// filter = fmt.Sprintf("dst port %d", dstPorts)
+	// filter = fmt.Sprintf("udp and dst port %d", dstPorts)
+	// filter = fmt.Sprintf("udp and dst port %d and dst host %s", dstPorts, localhost.String())
 
 	iface := ""
 	t.Logf("capturing from interface '%s' and port %d\n", iface, dstPorts)

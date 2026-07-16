@@ -21,13 +21,13 @@ import (
 )
 
 const (
-	//defaultFrameSize = 4096
+	// defaultFrameSize = 4096
 	defaultFrameSize = 65632 //nolint:unused
-	//defaultBlockNumbers = 128
+	// defaultBlockNumbers = 128
 	defaultBlockNumbers = 32
-	//defaultBlockSize = defaultFrameSize * defaultBlockNumbers
+	// defaultBlockSize = defaultFrameSize * defaultBlockNumbers
 	defaultBlockSize = 131072 //nolint:unused
-	//defaultFramesPerBlock = defaultBlockSize / defaultFrameSize
+	// defaultFramesPerBlock = defaultBlockSize / defaultFrameSize
 	defaultFramesPerBlock = 32
 	EthHlen               = 0x10
 	// defaultSyscalls default setting for using syscalls
@@ -405,7 +405,6 @@ func (h *Handle) Close() {
 // set a classic BPF filter on the listener. filter must be compliant with
 // tcpdump syntax.
 func (h *Handle) setFilter() error {
-
 	/*
 	 * Try to install the kernel filter.
 	 */
@@ -463,7 +462,8 @@ func openLive(ctx context.Context, iface string, snaplen int32, promiscuous bool
 	h.fd = fd
 	h.pollfd = []syscall.PollFd{{
 		Fd:     int32(h.fd),
-		Events: syscall.POLLIN | syscall.POLLERR | syscall.POLLNVAL}}
+		Events: syscall.POLLIN | syscall.POLLERR | syscall.POLLNVAL,
+	}}
 	if err := syscall.SetNonblock(fd, false); err != nil {
 		return nil, fmt.Errorf("failed to set socket as blocking: %v", err)
 	}
