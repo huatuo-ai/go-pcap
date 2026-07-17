@@ -82,7 +82,7 @@ func TestTCPDumpPrinterCommonPacketSummaries(t *testing.T) {
 			),
 			options: tcpdumpOptions{numeric: 2, linkLayer: true},
 			expected: "12:34:56.123456 00:11:22:33:44:55 > 66:77:88:99:aa:bb, " +
-				"ethertype ARP (0x0806), length 42: ARP, Request who-has 192.0.2.2 tell 192.0.2.1, length 42",
+				"ethertype ARP (0x0806), length 60: ARP, Request who-has 192.0.2.2 tell 192.0.2.1, length 60",
 		},
 	}
 
