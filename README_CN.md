@@ -1,5 +1,9 @@
 # go-pcap
 
+<p align="center">
+  <img src="assets/go-pcap-logo.svg" width="128" alt="go-pcap 标志">
+</p>
+
 [English](README.md)
 
 `go-pcap` 是一个原生 Go 的抓包库和 tcpdump 风格 cBPF 过滤编译器。它不依赖

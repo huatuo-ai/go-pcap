@@ -1,5 +1,9 @@
 # go-pcap
 
+<p align="center">
+  <img src="assets/go-pcap-logo.svg" width="128" alt="go-pcap logo">
+</p>
+
 [简体中文](README_CN.md)
 
 `go-pcap` is a native Go packet-capture library and tcpdump-style cBPF filter
