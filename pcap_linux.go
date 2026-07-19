@@ -81,10 +81,8 @@ const pollIntervalMs = 60 * 1000 // 1 minute
 type Handle struct {
 	// this must be first for atomic to behave nicely
 	state           uint32
-	context         context.Context
 	closed          sync.Once
 	syscalls        bool
-	promiscuous     bool
 	index           int
 	iface           string
 	snaplen         int32
@@ -124,9 +122,9 @@ func (h *Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err err
 
 	// if there already was one in the cache, return it
 	if len(h.cache) > 0 {
-		cap := h.cache[0]
+		capturedPacket := h.cache[0]
 		h.cache = h.cache[1:]
-		return cap.data, cap.ci, nil
+		return capturedPacket.data, capturedPacket.ci, nil
 	}
 	// there was not, so read a new one
 	caps, err := h.readPacketDataMmap()
@@ -140,9 +138,9 @@ func (h *Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err err
 		return caps[0].data, caps[0].ci, nil
 	}
 	h.cache = caps
-	cap := h.cache[0]
+	capturedPacket := h.cache[0]
 	h.cache = h.cache[1:]
-	return cap.data, cap.ci, nil
+	return capturedPacket.data, capturedPacket.ci, nil
 }
 
 func writeVLANTag(data []byte, tci, tpid uint16) ([]byte, []byte) {
@@ -180,7 +178,7 @@ func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, 
 		var aux []byte
 		b, aux = writeVLANTag(b, auxData.Vlan_tci, auxData.Vlan_tpid)
 		b = append(append(b[:14], aux...), b[14:]...)
-		n = n + 4
+		n += 4
 	}
 	ci = gopacket.CaptureInfo{
 		Timestamp:      time.Now(),
@@ -219,7 +217,7 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 		// Just repeat Poll when we get timeout, do not even log anything.
 		for err == nil && val == 0 {
 			if !atomic.CompareAndSwapUint32(&h.state, reading, polling) {
-				// the state is cancelling
+				// the state is canceling
 				logger.Debugf("polling was canceled for ring %p", h.ring)
 				return nil, io.EOF
 			}
@@ -228,7 +226,7 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 			// does not seem to always do the job.
 			val, err = syscall.Poll(h.pollfd, pollIntervalMs)
 			if !atomic.CompareAndSwapUint32(&h.state, polling, reading) {
-				// the state is cancelling
+				// the state is canceling
 				logger.Debugf("polling was canceled for ring %p", h.ring)
 				return nil, io.EOF
 			}
@@ -241,7 +239,7 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 			continue
 		case err != nil:
 			logger.Errorf("error polling socket: %v", err)
-			return nil, fmt.Errorf("error polling socket: %v", err)
+			return nil, fmt.Errorf("error polling socket: %w", err)
 		case val < 0:
 			logger.Error("negative return value from polling socket")
 			return nil, errors.New("negative return value from polling socket")
@@ -253,7 +251,7 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 			sockOptVal, err := syscall.GetsockoptInt(h.fd, syscall.SOL_SOCKET, syscall.SO_ERROR)
 			if err != nil {
 				logger.Errorf("could not get sockopt to check poll error; sockopt error: %v", err)
-				return nil, fmt.Errorf("could not get sockopt to check poll error; sockopt error: %v", err)
+				return nil, fmt.Errorf("could not get sockopt to check poll error; sockopt error: %w", err)
 			}
 			if sockOptVal == int(syscall.ENETDOWN) {
 				logger.Errorf("interface %s is down, marking handle as gone and returning", h.iface)
@@ -281,12 +279,12 @@ func (h *Handle) processMmapPackets(blockBase, flagIndex int) ([]captured, error
 	// read the header
 	logger.Debugf("reading block header into b slice from position %d to position %d", blockBase, blockBase+h.blockSize)
 	b := h.ring[blockBase : blockBase+h.blockSize]
-	buf := bytes.NewBuffer(b[:])
+	buf := bytes.NewBuffer(b)
 	bHdr := blockHeader{}
 	logger.Debugf("binary parsing block header of size %d", buf.Len())
 	if err := binary.Read(buf, h.endian, &bHdr); err != nil {
 		logger.Errorf("error reading block header: %v", err)
-		return nil, fmt.Errorf("error reading block header: %v", err)
+		return nil, fmt.Errorf("error reading block header: %w", err)
 	}
 	logger.Debugf("block header %#v", bHdr)
 	// now we need to get the packets themselves
@@ -301,9 +299,8 @@ func (h *Handle) processMmapPackets(blockBase, flagIndex int) ([]captured, error
 		buf := bytes.NewBuffer(b[:alignedTpacketHdrSize])
 		logger.Debugf("binary parsing packet header of size %d", buf.Len())
 		if err := binary.Read(buf, h.endian, &hdr); err != nil {
-			msg := fmt.Sprintf("error reading tpacket3 header on byte %d: %v", i, err)
-			logger.Errorf(msg)
-			return nil, errors.New(msg)
+			logger.Errorf("error reading tpacket3 header on byte %d: %v", i, err)
+			return nil, fmt.Errorf("error reading tpacket3 header on byte %d: %w", i, err)
 		}
 		logger.Debugf("tpacket3 header %#v", hdr)
 		nextOffset = hdr.Next_offset
@@ -316,7 +313,7 @@ func (h *Handle) processMmapPackets(blockBase, flagIndex int) ([]captured, error
 		sall, err := parseSocketAddrLinkLayer(b[alignedTpacketHdrSize:alignedTpacketAllHdrSize], h.endian)
 		if err != nil {
 			logger.Errorf("error parsing sockaddr_ll: %v", err)
-			return nil, fmt.Errorf("error parsing sockaddr_ll for packet %d: %v", i, err)
+			return nil, fmt.Errorf("error parsing sockaddr_ll for packet %d: %w", i, err)
 		}
 
 		ci := gopacket.CaptureInfo{
@@ -337,7 +334,7 @@ func (h *Handle) processMmapPackets(blockBase, flagIndex int) ([]captured, error
 		copy(data, b[hdr.Mac:uint32(hdr.Mac)+hdr.Snaplen])
 		if hdr.Hv1.Vlan_tci != 0 {
 			var vlanTag []byte
-			data, vlanTag = writeVLANTag(data, uint16(hdr.Hv1.Vlan_tci), uint16(hdr.Hv1.Vlan_tpid))
+			data, vlanTag = writeVLANTag(data, uint16(hdr.Hv1.Vlan_tci), hdr.Hv1.Vlan_tpid)
 			data = append(data[:14], append(vlanTag, data[14:]...)...)
 		}
 		packets[i] = captured{
@@ -380,13 +377,13 @@ func (h *Handle) Close() {
 				break
 			}
 			if atomic.CompareAndSwapUint32(&h.state, reading, canceling) {
-				logger.Debugf("cancelling ongoig packet read")
+				logger.Debugf("canceling ongoing packet read")
 			}
 			if atomic.CompareAndSwapUint32(&h.state, polling, canceling) {
 				// When polling is interrupted it is safe to go ahead and unmap the ring buffer.
 				// Reader will eventually detect canceled polling and will exit without accessing
 				// the buffer anymore.
-				logger.Debugf("cancelling ongoing socket polling; not waiting for poll to return")
+				logger.Debugf("canceling ongoing socket polling; not waiting for poll to return")
 				break
 			}
 		}
@@ -405,16 +402,21 @@ func (h *Handle) Close() {
 // set a classic BPF filter on the listener. filter must be compliant with
 // tcpdump syntax.
 func (h *Handle) setFilter() error {
+	if len(h.filter) == 0 {
+		return errors.New("cannot install empty BPF filter")
+	}
+
 	/*
 	 * Try to install the kernel filter.
 	 */
 	prog := syscall.SockFprog{
-		Len:    uint16(len(h.filter)),
+		Len: uint16(len(h.filter)),
+		// #nosec G103 -- SO_ATTACH_FILTER synchronously copies this non-empty Go-owned slice.
 		Filter: (*syscall.SockFilter)(unsafe.Pointer(&h.filter[0])),
 	}
 
 	if err := syscall.SetsockoptSockFprog(h.fd, syscall.SOL_SOCKET, syscall.SO_ATTACH_FILTER, &prog); err != nil {
-		return fmt.Errorf("unable to set filter: %v", err)
+		return fmt.Errorf("unable to set filter: %w", err)
 	}
 	return nil
 }
@@ -433,7 +435,6 @@ func openLive(ctx context.Context, iface string, snaplen int32, promiscuous bool
 	})
 	logger.Debug("started")
 	h := Handle{
-		context: ctx,
 		// we start with it not open
 		state:    closed,
 		snaplen:  snaplen,
@@ -457,7 +458,7 @@ func openLive(ctx context.Context, iface string, snaplen int32, promiscuous bool
 	fd, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(htons(syscall.ETH_P_ALL)))
 	if err != nil {
 		logger.Errorf("failed opening raw socket: %v", err)
-		return nil, fmt.Errorf("failed opening raw socket: %v", err)
+		return nil, fmt.Errorf("failed opening raw socket: %w", err)
 	}
 	h.fd = fd
 	h.pollfd = []syscall.PollFd{{
@@ -465,17 +466,17 @@ func openLive(ctx context.Context, iface string, snaplen int32, promiscuous bool
 		Events: syscall.POLLIN | syscall.POLLERR | syscall.POLLNVAL,
 	}}
 	if err := syscall.SetNonblock(fd, false); err != nil {
-		return nil, fmt.Errorf("failed to set socket as blocking: %v", err)
+		return nil, fmt.Errorf("failed to set socket as blocking: %w", err)
 	}
 	if err = syscall.SetsockoptInt(fd, syscall.SOL_PACKET, syscall.PACKET_AUXDATA, 1); err != nil {
-		return nil, fmt.Errorf("failed to set packet auxilary data: %w", err)
+		return nil, fmt.Errorf("failed to set packet auxiliary data: %w", err)
 	}
 	if iface != "" {
 		// get our interface
 		in, err := net.InterfaceByName(iface)
 		if err != nil {
 			logger.Errorf("unknown interface %s: %v", iface, err)
-			return nil, fmt.Errorf("unknown interface %s: %v", iface, err)
+			return nil, fmt.Errorf("unknown interface %s: %w", iface, err)
 		}
 		// check the interface is up
 		if in.Flags&net.FlagUp != net.FlagUp {
@@ -491,24 +492,23 @@ func openLive(ctx context.Context, iface string, snaplen int32, promiscuous bool
 		}
 		// bind to it
 		if err = syscall.Bind(fd, &sa); err != nil {
-			return nil, fmt.Errorf("failed to bind")
+			return nil, fmt.Errorf("failed to bind: %w", err)
 		}
 		if promiscuous {
-			h.promiscuous = true
 			mreq := syscall.PacketMreq{
 				Ifindex: int32(in.Index),
 				Type:    syscall.PACKET_MR_PROMISC,
 			}
 			if err = syscall.SetsockoptPacketMreq(fd, syscall.SOL_PACKET, syscall.PACKET_ADD_MEMBERSHIP, &mreq); err != nil {
 				logger.Errorf("failed to set promiscuous for %s: %v", iface, err)
-				return nil, fmt.Errorf("failed to set promiscuous for %s: %v", iface, err)
+				return nil, fmt.Errorf("failed to set promiscuous for %s: %w", iface, err)
 			}
 		}
 	}
 	if !syscalls {
 		if err = syscall.SetsockoptInt(fd, syscall.SOL_PACKET, syscall.PACKET_VERSION, syscall.TPACKET_V3); err != nil {
 			logger.Errorf("failed to set TPACKET_V3: %v", err)
-			return nil, fmt.Errorf("failed to set TPACKET_V3: %v", err)
+			return nil, fmt.Errorf("failed to set TPACKET_V3: %w", err)
 		}
 		// set up the ring
 		var (
@@ -518,7 +518,7 @@ func openLive(ctx context.Context, iface string, snaplen int32, promiscuous bool
 			blockNumbers uint32 = defaultBlockNumbers
 		)
 		for blockSize <= frameSize {
-			blockSize = blockSize << 1
+			blockSize <<= 1
 		}
 		// we use the default - for now
 
@@ -534,13 +534,13 @@ func openLive(ctx context.Context, iface string, snaplen int32, promiscuous bool
 		logger.Debugf("creating mmap buffer with tpreq %#v", tpreq)
 		if err = syscall.SetsockoptTpacketReq3(fd, syscall.SOL_PACKET, syscall.PACKET_RX_RING, &tpreq); err != nil {
 			logger.Errorf("failed to set tpacket req: %v", err)
-			return nil, fmt.Errorf("failed to set tpacket req: %v", err)
+			return nil, fmt.Errorf("failed to set tpacket req: %w", err)
 		}
 		totalSize := int(tpreq.Block_size * tpreq.Block_nr)
 		data, err := syscall.Mmap(fd, 0, totalSize, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
 		if err != nil {
 			logger.Errorf("error mmapping: %v", err)
-			return nil, fmt.Errorf("error mmapping: %v", err)
+			return nil, fmt.Errorf("error mmapping: %w", err)
 		}
 		logger.Infof("mmap buffer created at %p with size %d", data, len(data))
 		h.framesPerBuffer = framesPerBuffer
