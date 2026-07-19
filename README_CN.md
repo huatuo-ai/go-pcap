@@ -1,17 +1,39 @@
-# go-pcap
-
 <p align="center">
-  <img src="assets/go-pcap-logo.svg" width="128" alt="go-pcap 标志">
+  <img src="docs/img/go-pcap-logo-v3.png" alt="go-pcap 鹰正在捕获并过滤数据包" width="300" />
 </p>
 
-[English](README.md)
+<h1 align="center">go-pcap</h1>
+
+<p align="center">
+  <strong>原生 Go 抓包、tcpdump 风格 cBPF 编译、无 CGO 交叉构建</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/huatuo-ai/go-pcap/stargazers"><img src="https://img.shields.io/github/stars/huatuo-ai/go-pcap?style=social" alt="GitHub Stars" /></a>
+  <a href="https://github.com/huatuo-ai/go-pcap/issues"><img src="https://img.shields.io/github/issues/huatuo-ai/go-pcap" alt="GitHub Issues" /></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-green" alt="Apache 2.0 License" /></a>
+  <a href="./CONTRIBUTING.md"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome" /></a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Go-Native_Packet_Capture-00ADD8" alt="原生 Go 抓包" />
+  <img src="https://img.shields.io/badge/cBPF-tcpdump_style_filters-0B3C4A" alt="tcpdump 风格 cBPF 过滤器" />
+  <img src="https://img.shields.io/badge/CGO-Zero_dependency-blue" alt="无 CGO 构建" />
+</p>
+
+<p align="center">
+  <a href="./README.md"><strong>English</strong></a> ·
+  <a href="./docs/index.md"><strong>Documentation</strong></a> ·
+  <a href="./examples/README.md"><strong>Examples</strong></a>
+</p>
+## 什么是 go-pcap
 
 `go-pcap` 是一个原生 Go 的抓包库和 tcpdump 风格 cBPF 过滤编译器。它不依赖
 CGO，因此可以方便地使用 `CGO_ENABLED=0` 构建和交叉编译。
 
 下方演示展示 `pcap` CLI 通过一条 L3 感知的 cBPF 过滤表达式抓取 loopback 流量，并输出 tcpdump 兼容的抓包摘要：
 
-![go-pcap 演示](demo.gif)
+<img src="demo.gif" alt="go-pcap 演示" width="1457" height="618" />
 
 ## 为什么维护这个分支
 
@@ -34,47 +56,6 @@ CGO，因此可以方便地使用 `CGO_ENABLED=0` 构建和交叉编译。
 
 ```sh
 go get github.com/huatuo-ai/go-pcap@latest
-```
-
-## 实时抓包
-
-`Handle` 与 `gopacket` 的 packet source 接口兼容。实时抓包时的过滤规则按照
-Ethernet 帧布局编译。
-
-```go
-package main
-
-import (
-	"context"
-	"log"
-	"time"
-
-	pcap "github.com/huatuo-ai/go-pcap"
-)
-
-func main() {
-	h, err := pcap.OpenLive(
-		context.Background(),
-		"eth0",
-		1600,
-		true,
-		time.Second,
-		pcap.DefaultSyscalls,
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer h.Close()
-
-	if err := h.SetBPFFilter("tcp and port 443"); err != nil {
-		log.Fatal(err)
-	}
-
-	data, captureInfo, err := h.ReadPacketData()
-	_ = data
-	_ = captureInfo
-	_ = err
-}
 ```
 
 ## 为 Ethernet 或裸 IP 编译过滤器

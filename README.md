@@ -1,10 +1,32 @@
-# go-pcap
-
 <p align="center">
-  <img src="assets/go-pcap-logo.svg" width="128" alt="go-pcap logo">
+  <img src="docs/img/go-pcap-logo-v2.png" alt="go-pcap logo" width="300" />	
 </p>
 
-[简体中文](README_CN.md)
+<h1 align="center">go-pcap</h1>
+
+<p align="center">
+  <strong>Native Go Packet Capture, tcpdump-style cBPF Compilation, CGO-free Cross Builds</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/huatuo-ai/go-pcap/stargazers"><img src="https://img.shields.io/github/stars/huatuo-ai/go-pcap?style=social" alt="GitHub Stars" /></a>
+  <a href="https://github.com/huatuo-ai/go-pcap/issues"><img src="https://img.shields.io/github/issues/huatuo-ai/go-pcap" alt="GitHub Issues" /></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-green" alt="Apache 2.0 License" /></a>
+  <a href="./CONTRIBUTING.md"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome" /></a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Go-Native_Packet_Capture-00ADD8" alt="Native Go packet capture" />
+  <img src="https://img.shields.io/badge/cBPF-tcpdump_style_filters-0B3C4A" alt="tcpdump-style cBPF filters" />
+  <img src="https://img.shields.io/badge/CGO-Zero_dependency-blue" alt="CGO-free builds" />
+</p>
+
+<p align="center">
+  <a href="./README_CN.md"><strong>中文文档</strong></a> ·
+  <a href="./docs/index.md"><strong>Documentation</strong></a> ·
+  <a href="./examples/README.md"><strong>Examples</strong></a>
+</p>
+## What is go-pcap
 
 `go-pcap` is a native Go packet-capture library and tcpdump-style cBPF filter
 compiler. It provides a libpcap-like capture surface without CGO, making
@@ -40,47 +62,6 @@ of complete libpcap grammar compatibility.
 
 ```sh
 go get github.com/huatuo-ai/go-pcap@latest
-```
-
-## Live capture
-
-`Handle` is compatible with the `gopacket` packet-source interfaces. Live
-capture filters are compiled for Ethernet framing.
-
-```go
-package main
-
-import (
-	"context"
-	"log"
-	"time"
-
-	pcap "github.com/huatuo-ai/go-pcap"
-)
-
-func main() {
-	h, err := pcap.OpenLive(
-		context.Background(),
-		"eth0",
-		1600,
-		true,
-		time.Second,
-		pcap.DefaultSyscalls,
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer h.Close()
-
-	if err := h.SetBPFFilter("tcp and port 443"); err != nil {
-		log.Fatal(err)
-	}
-
-	data, captureInfo, err := h.ReadPacketData()
-	_ = data
-	_ = captureInfo
-	_ = err
-}
 ```
 
 ## Compile filters for Ethernet or raw IP
