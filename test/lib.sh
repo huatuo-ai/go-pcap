@@ -125,7 +125,7 @@ run_capture_case() {
 	grep -Fq "${expected_summary}" "${out}" ||
 		dump_logs_and_fail "${out}" "${err}" "${name}: expected tcpdump summary ${expected_summary} was not captured"
 
-	grep -Eq '^[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6} IP 127\.0\.0\.1 > 127\.0\.0\.1:' "${out}" ||
+	grep -Eq '^[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}( [^,]+ > [^,]+, ethertype IPv4 \(0x0800\), length [0-9]+:)? IP 127\.0\.0\.1(\.[0-9]+)? > 127\.0\.0\.1(\.[0-9]+)?:' "${out}" ||
 		dump_logs_and_fail "${out}" "${err}" "${name}: loopback IPv4 packet was not captured"
 
 	if [[ " $* " == *" -e "* ]]; then
