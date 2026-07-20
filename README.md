@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/img/go-pcap-logo-v2.png" alt="go-pcap logo" width="300" />	
+  <img src="docs/img/go-pcap-logo-v3.png" alt="go-pcap logo" width="300" />
 </p>
 
 <h1 align="center">go-pcap</h1>
