@@ -84,6 +84,23 @@ func TestTCPDumpPrinterCommonPacketSummaries(t *testing.T) {
 			expected: "12:34:56.123456 00:11:22:33:44:55 > 66:77:88:99:aa:bb, " +
 				"ethertype ARP (0x0806), length 60: ARP, Request who-has 192.0.2.2 tell 192.0.2.1, length 60",
 		},
+		{
+			name: "vlan with link header",
+			packet: testPacket(t,
+				ethernet(layers.EthernetTypeDot1Q),
+				&layers.Dot1Q{
+					Priority:       0,
+					VLANIdentifier: 3,
+					Type:           layers.EthernetTypeIPv4,
+				},
+				ipv4(layers.IPProtocolTCP),
+				&layers.TCP{SrcPort: 791, DstPort: 52222, FIN: true, ACK: true, Window: 57},
+			),
+			options: tcpdumpOptions{numeric: 2, linkLayer: true},
+			expected: "12:34:56.123456 00:11:22:33:44:55 > 66:77:88:99:aa:bb, " +
+				"ethertype 802.1Q (0x8100), length 60: vlan 3, p 0, ethertype IPv4, " +
+				"192.0.2.1.791 > 192.0.2.2.52222: Flags [F.], seq 0, ack 0, win 57, length 0",
+		},
 	}
 
 	for _, test := range tests {

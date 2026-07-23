@@ -35,6 +35,9 @@ const (
 	offsetToBlockStatus = 4 + 4
 
 	tpacketAuxdataSize = 20
+	ethernetVLANOffset = 12
+	vlanTagLength      = 4
+	etherTypeVLAN      = 0x8100
 )
 
 var (
@@ -53,6 +56,12 @@ type blockHeader struct {
 type captured struct {
 	data []byte
 	ci   gopacket.CaptureInfo
+}
+
+type vlanMetadata struct {
+	status uint32
+	tci    uint16
+	tpid   uint16
 }
 
 // Handle states
@@ -143,15 +152,30 @@ func (h *Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err err
 	return capturedPacket.data, capturedPacket.ci, nil
 }
 
-func writeVLANTag(data []byte, tci, tpid uint16) ([]byte, []byte) {
-	buf := make([]byte, 4)
-	if tpid == 0 || binary.BigEndian.Uint16(data[12:14]) != 0x8100 {
-		tpid = binary.BigEndian.Uint16(data[12:14])
-		binary.BigEndian.PutUint16(data[12:14], 0x8100) // set ethernet frame type to VLAN
+func restoreVLANTag(
+	data []byte,
+	ci gopacket.CaptureInfo,
+	metadata vlanMetadata,
+) ([]byte, gopacket.CaptureInfo) {
+	vlanPresent := metadata.tci != 0 || metadata.status&syscall.TP_STATUS_VLAN_VALID != 0
+	if !vlanPresent || len(data) < ethernetVLANOffset {
+		return data, ci
 	}
-	binary.BigEndian.PutUint16(buf[:2], tci)
-	binary.BigEndian.PutUint16(buf[2:], tpid)
-	return data, buf
+
+	tpid := metadata.tpid
+	if tpid == 0 && metadata.status&syscall.TP_STATUS_VLAN_TPID_VALID == 0 {
+		tpid = etherTypeVLAN
+	}
+
+	tagged := make([]byte, len(data)+vlanTagLength)
+	copy(tagged, data[:ethernetVLANOffset])
+	binary.BigEndian.PutUint16(tagged[ethernetVLANOffset:], tpid)
+	binary.BigEndian.PutUint16(tagged[ethernetVLANOffset+2:], metadata.tci)
+	copy(tagged[ethernetVLANOffset+vlanTagLength:], data[ethernetVLANOffset:])
+
+	ci.CaptureLength += vlanTagLength
+	ci.Length += vlanTagLength
+	return tagged, ci
 }
 
 func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, err error) {
@@ -168,17 +192,19 @@ func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, 
 		return nil, ci, fmt.Errorf("error reading socket control messages: %w", err)
 	}
 	for _, cmsg := range cmsgs {
-		if cmsg.Header.Level == syscall.SOL_PACKET && cmsg.Header.Type == syscall.PACKET_AUXDATA && cmsg.Header.Len >= tpacketAuxdataSize {
-			auxData.Vlan_tci = binary.BigEndian.Uint16(cmsg.Data[len(cmsg.Data)-5 : len(cmsg.Data)-3])
-			auxData.Vlan_tpid = binary.BigEndian.Uint16(cmsg.Data[len(cmsg.Data)-3:])
-			break
+		isAuxData := cmsg.Header.Level == syscall.SOL_PACKET &&
+			cmsg.Header.Type == syscall.PACKET_AUXDATA
+		if !isAuxData || len(cmsg.Data) < tpacketAuxdataSize {
+			continue
 		}
-	}
-	if auxData.Vlan_tci != 0 {
-		var aux []byte
-		b, aux = writeVLANTag(b, auxData.Vlan_tci, auxData.Vlan_tpid)
-		b = append(append(b[:14], aux...), b[14:]...)
-		n += 4
+		if err := binary.Read(
+			bytes.NewReader(cmsg.Data[:tpacketAuxdataSize]),
+			h.endian,
+			&auxData,
+		); err != nil {
+			return nil, ci, fmt.Errorf("decode packet auxiliary data: %w", err)
+		}
+		break
 	}
 	ci = gopacket.CaptureInfo{
 		Timestamp:      time.Now(),
@@ -186,7 +212,16 @@ func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, 
 		Length:         n,
 		InterfaceIndex: h.index,
 	}
-	return b[:n], ci, nil
+	data, ci = restoreVLANTag(
+		b[:n],
+		ci,
+		vlanMetadata{
+			status: auxData.Status,
+			tci:    auxData.Vlan_tci,
+			tpid:   auxData.Vlan_tpid,
+		},
+	)
+	return data, ci, nil
 }
 
 func (h *Handle) readPacketDataMmap() ([]captured, error) {
@@ -332,11 +367,15 @@ func (h *Handle) processMmapPackets(blockBase, flagIndex int) ([]captured, error
 		//   packetSource.NoCopy = true
 		data := make([]byte, hdr.Snaplen)
 		copy(data, b[hdr.Mac:uint32(hdr.Mac)+hdr.Snaplen])
-		if hdr.Hv1.Vlan_tci != 0 {
-			var vlanTag []byte
-			data, vlanTag = writeVLANTag(data, uint16(hdr.Hv1.Vlan_tci), hdr.Hv1.Vlan_tpid)
-			data = append(data[:14], append(vlanTag, data[14:]...)...)
-		}
+		data, ci = restoreVLANTag(
+			data,
+			ci,
+			vlanMetadata{
+				status: hdr.Status,
+				tci:    uint16(hdr.Hv1.Vlan_tci),
+				tpid:   hdr.Hv1.Vlan_tpid,
+			},
+		)
 		packets[i] = captured{
 			ci:   ci,
 			data: data,

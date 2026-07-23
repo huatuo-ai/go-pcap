@@ -52,16 +52,23 @@ func (p *tcpdumpPrinter) format(packet gopacket.Packet) string {
 	output.WriteString(timestamp.Local().Format("15:04:05.000000"))
 	output.WriteByte(' ')
 
+	linkHeaderPrinted := false
 	if ethernetLayer := packet.Layer(layers.LayerTypeEthernet); ethernetLayer != nil && p.options.linkLayer {
 		output.WriteString(p.formatEthernet(ethernetLayer.(*layers.Ethernet), packet))
+		output.WriteString(p.formatVLANs(packet))
+		linkHeaderPrinted = true
 	}
 
 	switch {
 	case packet.Layer(layers.LayerTypeIPv4) != nil:
-		output.WriteString("IP ")
+		if !linkHeaderPrinted {
+			output.WriteString("IP ")
+		}
 		output.WriteString(p.formatIPv4(packet, packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)))
 	case packet.Layer(layers.LayerTypeIPv6) != nil:
-		output.WriteString("IP6 ")
+		if !linkHeaderPrinted {
+			output.WriteString("IP6 ")
+		}
 		output.WriteString(p.formatIPv6(packet, packet.Layer(layers.LayerTypeIPv6).(*layers.IPv6)))
 	case packet.Layer(layers.LayerTypeARP) != nil:
 		output.WriteString(p.formatARP(packet.Layer(layers.LayerTypeARP).(*layers.ARP), packet))
@@ -84,6 +91,23 @@ func (p *tcpdumpPrinter) formatEthernet(ethernet *layers.Ethernet, packet gopack
 		uint16(ethernet.EthernetType),
 		packetLength(packet),
 	)
+}
+
+func (p *tcpdumpPrinter) formatVLANs(packet gopacket.Packet) string {
+	var output strings.Builder
+	for _, layer := range packet.Layers() {
+		vlan, ok := layer.(*layers.Dot1Q)
+		if !ok {
+			continue
+		}
+		output.WriteString(fmt.Sprintf(
+			"vlan %d, p %d, ethertype %s, ",
+			vlan.VLANIdentifier,
+			vlan.Priority,
+			etherTypeName(vlan.Type),
+		))
+	}
+	return output.String()
 }
 
 func (p *tcpdumpPrinter) formatIPv4(packet gopacket.Packet, ip *layers.IPv4) string {
