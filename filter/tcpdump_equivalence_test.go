@@ -82,6 +82,43 @@ func tcpdumpGoldenInstructions(fixture string) ([]bpf.Instruction, error) {
 
 func TestTCPDumpGoldenDecisionEquivalence(t *testing.T) {
 	packets := behaviorPacketCorpus(t)
+	const ipv4TCPFlagsOffset = 14 + 20 + 13
+	setIPv4TCPFlags := func(name string, flags byte) {
+		packet := append([]byte(nil), packets["ip4-tcp-80"]...)
+		packet[ipv4TCPFlagsOffset] = flags
+		packets[name] = packet
+	}
+	setIPv4TCPFlags("ip4-tcp-syn", 0x02)
+	setIPv4TCPFlags("ip4-tcp-ack", 0x10)
+	setIPv4TCPFlags("ip4-tcp-syn-ack", 0x12)
+	setIPv4TCPFlags("ip4-tcp-syn-ack-ece", 0x52)
+
+	vlan := func(packet []byte, id uint16) []byte {
+		return addVLANTags(t, packet, vlanTag{etherType: uint16(etherTypeVLAN), id: id})
+	}
+	packets["ip4-vlan100-tcp80"] = vlan(packets["ip4-tcp-80"], 100)
+	packets["ip4-vlan200-tcp80"] = vlan(packets["ip4-tcp-80"], 200)
+	packets["ip4-vlan100-tcp443"] = vlan(packets["ip4-tcp-443"], 100)
+	packets["ip4-qinq100-200-tcp80"] = addVLANTags(
+		t,
+		packets["ip4-tcp-80"],
+		vlanTag{etherType: uint16(etherTypeQinQ), id: 100},
+		vlanTag{etherType: uint16(etherTypeVLAN), id: 200},
+	)
+	packets["ip4-qinq100-201-tcp80"] = addVLANTags(
+		t,
+		packets["ip4-tcp-80"],
+		vlanTag{etherType: uint16(etherTypeQinQ), id: 100},
+		vlanTag{etherType: uint16(etherTypeVLAN), id: 201},
+	)
+
+	packets["ip4-mpls100-tcp80"] = addMPLSLabels(t, packets["ip4-tcp-80"], 100)
+	packets["ip4-mpls101-tcp80"] = addMPLSLabels(t, packets["ip4-tcp-80"], 101)
+	packets["ip4-mpls100-tcp443"] = addMPLSLabels(t, packets["ip4-tcp-443"], 100)
+	packets["ip4-mpls100-200-tcp80"] = addMPLSLabels(t, packets["ip4-tcp-80"], 100, 200)
+	packets["ip6-mpls100-200-udp53"] = addMPLSLabels(t, packets["ip6-udp-53"], 100, 200)
+	packets["ip6-mpls100-201-udp53"] = addMPLSLabels(t, packets["ip6-udp-53"], 100, 201)
+
 	tests := []struct {
 		name    string
 		expr    string
@@ -106,6 +143,77 @@ func TestTCPDumpGoldenDecisionEquivalence(t *testing.T) {
 				"ip4-tcp-80", "ip4-tcp-443", "ip4-udp-53", "ip6-tcp-80", "ip6-tcp-443",
 			},
 			expr: "tcp and port 80",
+		},
+		// tcpdump/libpcap emits an IPv4-only EN10MB program for tcp[] arithmetic.
+		{
+			name:    "ethernet tcp syn ack flags",
+			link:    LinkTypeEthernet,
+			fixture: "en10mb_tcp_syn_ack_flags.ddd",
+			packets: []string{
+				"ip4-tcp-syn", "ip4-tcp-ack", "ip4-tcp-syn-ack",
+				"ip4-tcp-syn-ack-ece", "ip4-tcp-80", "ip4-udp-53", "arp-request",
+			},
+			expr: "tcp[tcpflags] & (tcp-syn|tcp-ack) == (tcp-syn|tcp-ack)",
+		},
+		{
+			name:    "ethernet vlan tcp port",
+			link:    LinkTypeEthernet,
+			fixture: "en10mb_vlan_and_tcp_port_80.ddd",
+			packets: []string{
+				"ip4-vlan100-tcp80", "ip4-vlan200-tcp80", "ip4-vlan100-tcp443",
+				"ip4-qinq100-200-tcp80", "ip4-tcp-80", "ip4-udp-53",
+			},
+			expr: "vlan and tcp port 80",
+		},
+		{
+			name:    "ethernet vlan id tcp port",
+			link:    LinkTypeEthernet,
+			fixture: "en10mb_vlan_100_and_tcp_port_80.ddd",
+			packets: []string{
+				"ip4-vlan100-tcp80", "ip4-vlan200-tcp80", "ip4-vlan100-tcp443",
+				"ip4-qinq100-200-tcp80", "ip4-tcp-80",
+			},
+			expr: "vlan 100 and tcp port 80",
+		},
+		{
+			name:    "ethernet qinq tcp port",
+			link:    LinkTypeEthernet,
+			fixture: "en10mb_vlan_100_vlan_200_tcp_port_80.ddd",
+			packets: []string{
+				"ip4-qinq100-200-tcp80", "ip4-qinq100-201-tcp80",
+				"ip4-vlan100-tcp80", "ip4-tcp-80",
+			},
+			expr: "vlan 100 and vlan 200 and tcp port 80",
+		},
+		{
+			name:    "ethernet mpls ip",
+			link:    LinkTypeEthernet,
+			fixture: "en10mb_mpls_and_ip.ddd",
+			packets: []string{
+				"ip4-mpls100-tcp80", "ip4-mpls100-200-tcp80", "ip4-tcp-80",
+				"ip4-vlan100-tcp80", "ip4-udp-53",
+			},
+			expr: "mpls and ip",
+		},
+		{
+			name:    "ethernet mpls label tcp port",
+			link:    LinkTypeEthernet,
+			fixture: "en10mb_mpls_100_and_tcp_port_80.ddd",
+			packets: []string{
+				"ip4-mpls100-tcp80", "ip4-mpls101-tcp80", "ip4-mpls100-tcp443",
+				"ip4-mpls100-200-tcp80", "ip4-tcp-80",
+			},
+			expr: "mpls 100 and tcp port 80",
+		},
+		{
+			name:    "ethernet mpls stack ip6",
+			link:    LinkTypeEthernet,
+			fixture: "en10mb_mpls_100_mpls_200_ip6.ddd",
+			packets: []string{
+				"ip6-mpls100-200-udp53", "ip6-mpls100-201-udp53",
+				"ip4-mpls100-200-tcp80", "ip6-udp-53",
+			},
+			expr: "mpls 100 and mpls 200 and ip6",
 		},
 		{
 			name:    "ethernet udp port",
