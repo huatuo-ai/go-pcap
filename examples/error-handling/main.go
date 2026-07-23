@@ -45,6 +45,11 @@ func run() error {
 			link: filter.LinkTypeEthernet,
 		},
 		{
+			name: "unsupported feature",
+			expr: "inbound",
+			link: filter.LinkTypeEthernet,
+		},
+		{
 			name: "unsupported link type",
 			expr: "ip",
 			link: filter.LinkType(99),
@@ -72,8 +77,12 @@ func classify(err error) string {
 	switch {
 	case errors.Is(err, filter.ErrEmptyFilter):
 		return "provide a non-empty filter expression"
+	case errors.Is(err, filter.ErrUnsupportedFeature):
+		return "choose a feature supported by the compiler"
+	case errors.Is(err, filter.ErrHostResolution):
+		return "provide a resolvable host name or a literal address"
 	case errors.Is(err, filter.ErrInvalidFilter):
-		return "correct the unsupported or malformed expression"
+		return "correct the malformed expression"
 	case errors.Is(err, filter.ErrUnsupportedLinkType):
 		return "choose filter.LinkTypeEthernet or filter.LinkTypeRaw"
 	case errors.Is(err, filter.ErrL2OnlyLinkType):

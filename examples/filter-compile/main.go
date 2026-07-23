@@ -49,6 +49,14 @@ func run() error {
 		}
 	}
 
+	if err := printProgram(
+		"tcp[tcpflags] & (tcp-syn|tcp-ack) == (tcp-syn|tcp-ack)",
+		"EN10MB tcp SYN+ACK",
+		filter.LinkTypeEthernet,
+	); err != nil {
+		return err
+	}
+
 	_, err := filter.Compile("arp", filter.LinkTypeRaw)
 	switch {
 	case errors.Is(err, filter.ErrL2OnlyLinkType):

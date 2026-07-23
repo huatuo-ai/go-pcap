@@ -122,17 +122,25 @@ Common supported expressions include:
 
 ```text
 tcp and port 443
+src portrange 1000-2000
 ip6 and udp and port 53
 src and dst host 192.0.2.1
 ip multicast
+tcp[tcpflags] == tcp-syn
+tcp[tcpflags] & (tcp-syn|tcp-ack) == (tcp-syn|tcp-ack)
+vlan 100 and tcp port 443
+mpls and ip
 tcp and port 80 or udp
 not (tcp or udp)
 ```
 
 `and` binds tighter than `or`; use parentheses when explicit grouping makes a
-rule easier to read. Byte-offset predicates, protocol-number literals, port
-ranges, VLAN/MPLS encapsulation, and the full tcpdump grammar are not currently
-implemented.
+rule easier to read. Packet access supports 1-, 2-, and 4-byte network-order
+loads with explicit bounds checks. TCP flag names follow tcpdump/libpcap, so
+the SYN+ACK mask should be written as `tcp-syn|tcp-ack` rather than
+`syn|ack`. Protocol-number literals, `protochain`, netmask-dependent broadcast
+predicates, packet-context metadata, non-EN10MB/RAW layouts, and the full
+tcpdump grammar are not currently implemented.
 
 ## Reliability: tests and benchmarks
 
@@ -174,6 +182,7 @@ remain numeric and output is deterministic.
 
 ```sh
 ./pcap -nn -i eth0 -c 10 'tcp port 443'
+./pcap -nn -i eth0 -c 10 'tcp[tcpflags] & (tcp-syn|tcp-ack) == (tcp-syn|tcp-ack)'
 ```
 
 This is a live-capture CLI; pcap file read/write modes and the less common

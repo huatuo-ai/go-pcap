@@ -36,9 +36,11 @@ The tcpdump programs live under
 They are embedded by the filter package, so do not move them. The suite checks
 the accept/reject decision, not byte-for-byte instruction identity.
 
-Deliberately refresh a fixture with `tcpdump -y <DLT> -ddd <expression>`, then
-review the semantic change and update the fixture version note. Do not refresh
-goldens as an incidental part of another compiler edit. See the
+Deliberately refresh a fixture with `tcpdump -y <DLT> -ddd <expression>`, or
+with `tcpdump -ddd -r <pcap> <expression>` when a savefile with the right
+data-link type is available. Review the semantic change and update the fixture
+version note. Do not refresh goldens as an incidental part of another compiler
+edit. See the
 [fixture README](../../filter/testdata/tcpdump-4.99.0-libpcap-1.10.0/README.md)
 for the exact provenance rules.
 

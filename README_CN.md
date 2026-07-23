@@ -114,15 +114,23 @@ func main() {
 
 ```text
 tcp and port 443
+src portrange 1000-2000
 ip6 and udp and port 53
 src and dst host 192.0.2.1
 ip multicast
+tcp[tcpflags] == tcp-syn
+tcp[tcpflags] & (tcp-syn|tcp-ack) == (tcp-syn|tcp-ack)
+vlan 100 and tcp port 443
+mpls and ip
 tcp and port 80 or udp
 not (tcp or udp)
 ```
 
-`and` 的优先级高于 `or`；当规则较复杂时建议使用括号明确分组。当前不支持字节
-偏移表达式、数字协议号字面量、端口范围、VLAN/MPLS 封装以及完整 tcpdump 语法。
+`and` 的优先级高于 `or`；当规则较复杂时建议使用括号明确分组。字节访问支持
+1、2、4 字节网络序读取，并带显式越界检查。TCP flags 名称遵循 tcpdump/libpcap，
+因此 SYN+ACK 掩码应写成 `tcp-syn|tcp-ack`，不能写成 `syn|ack`。当前仍不支持
+数字协议号、`protochain`、依赖 netmask 的 broadcast、报文上下文元数据、
+EN10MB/RAW 之外的链路布局以及完整 tcpdump 语法。
 
 ## 可靠性：测试与基准
 
@@ -162,6 +170,7 @@ CLI 对常见的 Ethernet、ARP、IPv4、IPv6、TCP、UDP 和 ICMP 流量输出 
 
 ```sh
 ./pcap -nn -i eth0 -c 10 'tcp port 443'
+./pcap -nn -i eth0 -c 10 'tcp[tcpflags] & (tcp-syn|tcp-ack) == (tcp-syn|tcp-ack)'
 ```
 
 该 CLI 仅支持实时抓包；读取/写入 pcap 文件及较少使用的 tcpdump 参数暂未实现。

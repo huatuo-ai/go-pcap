@@ -41,6 +41,9 @@ layout; it is not an Ethernet capture handle replacement.
 - `ErrEmptyFilter`: the expression is empty.
 - `ErrInvalidFilter`: the expression cannot be compiled by the supported
   grammar and validation rules.
+- `ErrUnsupportedFeature`: the expression names a recognized feature that is
+  not implemented for this compiler context.
+- `ErrHostResolution`: a hostname lookup failed or returned no usable address.
 - `ErrUnsupportedLinkType`: the requested layout is not Ethernet or RAW.
 - `ErrL2OnlyLinkType`: the selected RAW layout cannot evaluate an entirely
   L2-only expression.

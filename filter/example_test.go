@@ -35,6 +35,17 @@ func ExampleCompile_rawLinkType() {
 	// true true
 }
 
+func ExampleCompile_tcpFlags() {
+	insns, err := Compile(
+		"tcp[tcpflags] & (tcp-syn|tcp-ack) == (tcp-syn|tcp-ack)",
+		LinkTypeEthernet,
+	)
+	fmt.Println(err == nil, len(insns) > 0)
+
+	// Output:
+	// true true
+}
+
 func ExampleCompile_l2OnlyLinkType() {
 	_, err := Compile("arp", LinkTypeRaw)
 	fmt.Println(errors.Is(err, ErrL2OnlyLinkType))

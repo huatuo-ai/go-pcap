@@ -54,6 +54,12 @@ successful `filter.Compile` call produces. See [Ethernet and RAW link
 types](guides/linktype-raw.md) before compiling filters for loopback or custom
 L3 inputs.
 
+TCP flag filters use tcpdump/libpcap names. For example, a SYN+ACK filter is:
+
+```text
+tcp[tcpflags] & (tcp-syn|tcp-ack) == (tcp-syn|tcp-ack)
+```
+
 ## Capture packets
 
 For a live interface, call `pcap.OpenLive`, apply a tcpdump-style filter with

@@ -10,10 +10,13 @@ complete replacement for tcpdump or a pcap-file reader.
 make build
 ./pcap --help
 ./pcap -nn -i eth0 -c 10 'tcp port 443'
+./pcap -nn -i eth0 -c 10 'tcp[tcpflags] & (tcp-syn|tcp-ack) == (tcp-syn|tcp-ack)'
 ```
 
 Use `-nn` in scripts to keep host and service names numeric and therefore make
-output deterministic. Common switches compatible with tcpdump 4.99.x are:
+output deterministic. Quote flag expressions in the shell because `&`, `|`,
+and parentheses are shell metacharacters. Common switches compatible with
+tcpdump 4.99.x are:
 
 ```text
 -i  -c  -n/-nn  -q  -v  -e  -X  -A  -s  -p
