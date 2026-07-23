@@ -16,15 +16,13 @@ package filter
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
 
 	"golang.org/x/net/bpf"
 )
-
-var resolver net.Resolver
 
 // primitive implements Filter and Element
 type primitive struct {
@@ -34,6 +32,7 @@ type primitive struct {
 	subProtocol filterSubProtocol
 	negator     bool
 	id          string
+	resolved    []net.IP
 }
 
 func (p primitive) IsPrimitive() bool { return true }
@@ -41,6 +40,10 @@ func (p primitive) Type() ElementType { return Primitive }
 func (p primitive) Distill() Filter   { return p }
 
 func (p primitive) Combine(o *primitive) *primitive {
+	if p.kind == filterKindVLAN || p.kind == filterKindMPLS ||
+		o.kind == filterKindVLAN || o.kind == filterKindMPLS {
+		return nil
+	}
 	if p.kind == filterKindMulticast || o.kind == filterKindMulticast {
 		return nil
 	}
@@ -114,9 +117,6 @@ func (p primitive) kindCanCombineSubProtocol() bool {
 
 // Compile validates the primitive and delegates to the two-pass assembler.
 func (p primitive) Compile(layout linkLayout) ([]bpf.Instruction, error) {
-	if err := p.validate(); err != nil {
-		return nil, err
-	}
 	return compileFilter(p, layout)
 }
 
@@ -140,6 +140,9 @@ func (p primitive) isAlwaysReject(layout linkLayout) bool {
 	if layout.hasL2Protocols() {
 		return false
 	}
+	if p.kind == filterKindVLAN || p.kind == filterKindMPLS {
+		return true
+	}
 	switch p.kind {
 	case filterKindHost:
 		switch p.protocol {
@@ -157,6 +160,9 @@ func (p primitive) isAlwaysReject(layout linkLayout) bool {
 			return true
 		}
 	case filterKindUnset:
+		if p.subProtocol == filterSubProtocolSTP {
+			return true
+		}
 		switch p.protocol {
 		case filterProtocolArp, filterProtocolRarp:
 			return true
@@ -177,16 +183,112 @@ func (p primitive) emit(b *prog, onMatch, onMiss labelID) {
 		p.emitHost(b, onMatch, onMiss)
 	case filterKindPort:
 		p.emitPort(b, onMatch, onMiss)
+	case filterKindPortRange:
+		p.emitPortRange(b, onMatch, onMiss)
 	case filterKindNet:
 		p.emitNet(b, onMatch, onMiss)
 	case filterKindMulticast:
 		p.emitMulticast(b, onMatch, onMiss)
+	case filterKindVLAN:
+		p.emitVLAN(b, onMatch, onMiss)
+	case filterKindMPLS:
+		p.emitMPLS(b, onMatch, onMiss)
 	case filterKindUnset:
 		p.emitUnset(b, onMatch, onMiss)
 	}
 }
 
+func (p primitive) emitVLAN(b *prog, onMatch, onMiss labelID) {
+	if !b.layout.hasL2Protocols() {
+		b.emitJump(onMiss)
+		return
+	}
+	b.loadEtherKind()
+	matchedType := b.newLabel()
+	tryQinQ := b.newLabel()
+	tryVLAN9100 := b.newLabel()
+	b.emitJumpIf(bpf.JumpEqual, etherTypeVLAN, matchedType, tryQinQ)
+	b.bind(tryQinQ)
+	b.emitJumpIf(bpf.JumpEqual, etherTypeQinQ, matchedType, tryVLAN9100)
+	b.bind(tryVLAN9100)
+	b.emitJumpIf(bpf.JumpEqual, etherTypeVLAN9100, matchedType, onMiss)
+	b.bind(matchedType)
+	if p.id == "" {
+		b.emitJump(onMatch)
+		return
+	}
+	vlanID, err := strconv.ParseUint(p.id, 10, 12)
+	if err != nil {
+		b.emitJump(onMiss)
+		return
+	}
+	b.emit(bpf.LoadAbsolute{Off: b.layout.l3Off(), Size: lengthHalf})
+	b.emit(bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: 0x0fff})
+	b.emitJumpIf(bpf.JumpEqual, uint32(vlanID), onMatch, onMiss)
+}
+
+func (p primitive) emitMPLS(b *prog, onMatch, onMiss labelID) {
+	layout, ok := b.layout.(cursorLayout)
+	if !ok || layout.cursor.probe != probeEtherType {
+		if ok && layout.cursor.mplsDepth > 0 {
+			p.emitNextMPLSLabel(b, layout.cursor, onMatch, onMiss)
+			return
+		}
+		b.emitJump(onMiss)
+		return
+	}
+	b.loadEtherKind()
+	matchedType := b.newLabel()
+	tryMulticast := b.newLabel()
+	b.emitJumpIf(bpf.JumpEqual, etherTypeMPLSUnicast, matchedType, tryMulticast)
+	b.bind(tryMulticast)
+	b.emitJumpIf(bpf.JumpEqual, etherTypeMPLSMulticast, matchedType, onMiss)
+	b.bind(matchedType)
+	if p.id == "" {
+		b.emitJump(onMatch)
+		return
+	}
+	p.emitMPLSLabelValue(b, layout.cursor.l3Offset, onMatch, onMiss)
+}
+
+func (p primitive) emitNextMPLSLabel(
+	b *prog,
+	cursor packetCursor,
+	onMatch labelID,
+	onMiss labelID,
+) {
+	nextLabel := b.newLabel()
+	b.emit(bpf.LoadAbsolute{Off: cursor.l3Offset - 2, Size: lengthByte})
+	b.emitJumpIf(bpf.JumpBitsSet, 0x01, onMiss, nextLabel)
+	b.bind(nextLabel)
+	if p.id == "" {
+		b.emitJump(onMatch)
+		return
+	}
+	p.emitMPLSLabelValue(b, cursor.l3Offset, onMatch, onMiss)
+}
+
+func (p primitive) emitMPLSLabelValue(b *prog, offset uint32, onMatch, onMiss labelID) {
+	label, err := strconv.ParseUint(p.id, 10, 20)
+	if err != nil {
+		b.emitJump(onMiss)
+		return
+	}
+	b.emit(bpf.LoadAbsolute{Off: offset, Size: lengthWord})
+	b.emit(bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: 0xfffff000})
+	b.emitJumpIf(bpf.JumpEqual, uint32(label)<<12, onMatch, onMiss)
+}
+
 func (p primitive) emitHost(b *prog, onMatch, onMiss labelID) {
+	if p.subProtocol != filterSubProtocolUnset {
+		hostOK := b.newLabel()
+		p.emitUnsetProtocol(b, hostOK, onMiss)
+		b.bind(hostOK)
+		p.subProtocol = filterSubProtocolUnset
+		p.emitHost(b, onMatch, onMiss)
+		return
+	}
+
 	switch p.protocol {
 	case filterProtocolEther:
 		if !b.layout.hasL2Protocols() {
@@ -201,16 +303,24 @@ func (p primitive) emitHost(b *prog, onMatch, onMiss labelID) {
 		ip6Ok := b.newLabel()
 		b.compareProtocolIP6(ip6Ok, onMiss)
 		b.bind(ip6Ok)
-		_, a6, _ := p.getAddrs()
-		b.checkIP6HostAddresses(p.direction, a6[0], onMatch, onMiss)
+		_, a6, err := p.getAddrs(net.DefaultResolver)
+		if err != nil {
+			b.emitJump(onMiss)
+			return
+		}
+		b.checkIP6HostAddressList(p.direction, a6, onMatch, onMiss)
 
 	case filterProtocolIP:
 		b.loadEtherKind()
 		ip4Ok := b.newLabel()
 		b.compareProtocolIP4(ip4Ok, onMiss)
 		b.bind(ip4Ok)
-		a4, _, _ := p.getAddrs()
-		b.checkIP4HostAddresses(p.direction, a4[0], onMatch, onMiss)
+		a4, _, err := p.getAddrs(net.DefaultResolver)
+		if err != nil {
+			b.emitJump(onMiss)
+			return
+		}
+		b.checkIP4HostAddressList(p.direction, a4, onMatch, onMiss)
 
 	case filterProtocolArp:
 		if !b.layout.hasL2Protocols() {
@@ -221,8 +331,12 @@ func (p primitive) emitHost(b *prog, onMatch, onMiss labelID) {
 		arpOk := b.newLabel()
 		b.compareProtocolArp(arpOk, onMiss)
 		b.bind(arpOk)
-		a4, _, _ := p.getAddrs()
-		b.checkIP4ArpAddresses(p.direction, a4[0], onMatch, onMiss)
+		a4, _, err := p.getAddrs(net.DefaultResolver)
+		if err != nil {
+			b.emitJump(onMiss)
+			return
+		}
+		b.checkIP4ArpAddressList(p.direction, a4, onMatch, onMiss)
 
 	case filterProtocolRarp:
 		if !b.layout.hasL2Protocols() {
@@ -233,8 +347,12 @@ func (p primitive) emitHost(b *prog, onMatch, onMiss labelID) {
 		rarpOk := b.newLabel()
 		b.compareProtocolRarp(rarpOk, onMiss)
 		b.bind(rarpOk)
-		a4, _, _ := p.getAddrs()
-		b.checkIP4ArpAddresses(p.direction, a4[0], onMatch, onMiss)
+		a4, _, err := p.getAddrs(net.DefaultResolver)
+		if err != nil {
+			b.emitJump(onMiss)
+			return
+		}
+		b.checkIP4ArpAddressList(p.direction, a4, onMatch, onMiss)
 
 	case filterProtocolUnset:
 		p.emitHostUnset(b, onMatch, onMiss)
@@ -242,7 +360,11 @@ func (p primitive) emitHost(b *prog, onMatch, onMiss labelID) {
 }
 
 func (p primitive) emitHostUnset(b *prog, onMatch, onMiss labelID) {
-	a4, a6, _ := p.getAddrs()
+	a4, a6, err := p.getAddrs(net.DefaultResolver)
+	if err != nil {
+		b.emitJump(onMiss)
+		return
+	}
 	b.loadEtherKind()
 	hasL2 := b.layout.hasL2Protocols()
 
@@ -255,7 +377,7 @@ func (p primitive) emitHostUnset(b *prog, onMatch, onMiss labelID) {
 			afterIP4 := b.newLabel()
 			b.compareProtocolIP4(ip4Ok, afterIP4)
 			b.bind(ip4Ok)
-			b.checkIP4HostAddresses(p.direction, a4[0], onMatch, onMiss)
+			b.checkIP4HostAddressList(p.direction, a4, onMatch, onMiss)
 			b.bind(afterIP4)
 			// ARP and RARP share the same address-check label.
 			arpRarpCheck := b.newLabel()
@@ -268,14 +390,21 @@ func (p primitive) emitHostUnset(b *prog, onMatch, onMiss labelID) {
 			}
 			b.compareProtocolRarp(arpRarpCheck, rarpMiss)
 			b.bind(arpRarpCheck)
-			b.checkIP4ArpAddresses(p.direction, a4[0], onMatch, onMiss)
+			b.checkIP4ArpAddressList(p.direction, a4, onMatch, onMiss)
 			if len(a6) > 0 {
 				b.bind(rarpMiss)
 			}
 		} else {
-			b.compareProtocolIP4(ip4Ok, onMiss)
+			ip4Miss := onMiss
+			if len(a6) > 0 {
+				ip4Miss = b.newLabel()
+			}
+			b.compareProtocolIP4(ip4Ok, ip4Miss)
 			b.bind(ip4Ok)
-			b.checkIP4HostAddresses(p.direction, a4[0], onMatch, onMiss)
+			b.checkIP4HostAddressList(p.direction, a4, onMatch, onMiss)
+			if ip4Miss != onMiss {
+				b.bind(ip4Miss)
+			}
 		}
 	}
 
@@ -283,7 +412,7 @@ func (p primitive) emitHostUnset(b *prog, onMatch, onMiss labelID) {
 		ip6Ok := b.newLabel()
 		b.compareProtocolIP6(ip6Ok, onMiss)
 		b.bind(ip6Ok)
-		b.checkIP6HostAddresses(p.direction, a6[0], onMatch, onMiss)
+		b.checkIP6HostAddressList(p.direction, a6, onMatch, onMiss)
 	}
 }
 
@@ -333,14 +462,69 @@ func (p primitive) emitPort(b *prog, onMatch, onMiss labelID) {
 	}
 }
 
+func (p primitive) emitPortRange(b *prog, onMatch, onMiss labelID) {
+	minimum, maximum, err := findPortRange(p.id)
+	if err != nil {
+		b.emitJump(onMiss)
+		return
+	}
+	b.loadEtherKind()
+
+	switch p.protocol {
+	case filterProtocolIP6:
+		ip6OK := b.newLabel()
+		b.compareProtocolIP6(ip6OK, onMiss)
+		b.bind(ip6OK)
+		b.emit(loadIPv6Protocol(b.layout))
+		p.emitSubProtocolCompare(b, onMatch, onMiss, true)
+		b.checkPortRange(p.direction, minimum, maximum, onMatch, onMiss, true)
+	case filterProtocolIP:
+		ip4OK := b.newLabel()
+		b.compareProtocolIP4(ip4OK, onMiss)
+		b.bind(ip4OK)
+		b.emit(loadIPv4Protocol(b.layout))
+		p.emitSubProtocolCompare(b, onMatch, onMiss, false)
+		b.checkPortRange(p.direction, minimum, maximum, onMatch, onMiss, false)
+	case filterProtocolUnset:
+		tryIP4 := b.newLabel()
+		ip6OK := b.newLabel()
+		b.compareProtocolIP6(ip6OK, tryIP4)
+		b.bind(ip6OK)
+		b.emit(loadIPv6Protocol(b.layout))
+		p.emitSubProtocolCompare(b, onMatch, onMiss, true)
+		b.checkPortRange(p.direction, minimum, maximum, onMatch, onMiss, true)
+
+		b.bind(tryIP4)
+		ip4OK := b.newLabel()
+		b.compareProtocolIP4(ip4OK, onMiss)
+		b.bind(ip4OK)
+		b.emit(loadIPv4Protocol(b.layout))
+		p.emitSubProtocolCompare(b, onMatch, onMiss, false)
+		b.checkPortRange(p.direction, minimum, maximum, onMatch, onMiss, false)
+	}
+}
+
 func (p primitive) emitNet(b *prog, onMatch, onMiss labelID) {
+	if p.subProtocol != filterSubProtocolUnset {
+		netOK := b.newLabel()
+		p.emitUnsetProtocol(b, netOK, onMiss)
+		b.bind(netOK)
+		p.subProtocol = filterSubProtocolUnset
+		p.emitNet(b, onMatch, onMiss)
+		return
+	}
+
 	switch p.protocol {
 	case filterProtocolIP6:
 		b.loadEtherKind()
 		ip6Ok := b.newLabel()
 		b.compareProtocolIP6(ip6Ok, onMiss)
 		b.bind(ip6Ok)
-		addr, network, _ := getNetAndMask(p.id)
+		addr, network, err := getNetAndMask(p.id)
+		if err != nil {
+			b.emitJump(onMiss)
+			return
+		}
 		b.checkIP6NetAddresses(p.direction, addr, network.Mask, onMatch, onMiss)
 
 	case filterProtocolIP:
@@ -379,7 +563,11 @@ func (p primitive) emitNet(b *prog, onMatch, onMiss labelID) {
 
 func (p primitive) emitNetUnset(b *prog, onMatch, onMiss labelID) {
 	b.loadEtherKind()
-	addr, network, _ := getNetAndMask(p.id)
+	addr, network, err := getNetAndMask(p.id)
+	if err != nil {
+		b.emitJump(onMiss)
+		return
+	}
 	hasL2 := b.layout.hasL2Protocols()
 
 	if addr.To4() != nil {
@@ -506,6 +694,8 @@ func (p primitive) emitUnset(b *prog, onMatch, onMiss labelID) {
 			b.compareProtocolArp(onMatch, onMiss)
 		case filterSubProtocolRarp:
 			b.compareProtocolRarp(onMatch, onMiss)
+		case filterSubProtocolSTP:
+			b.compareProtocolSTP(onMatch, onMiss)
 		}
 
 	case filterProtocolUnset:
@@ -516,7 +706,7 @@ func (p primitive) emitUnset(b *prog, onMatch, onMiss labelID) {
 // emitIPv6SubProtocol checks for a sub-protocol in an IPv6 packet.
 func (p primitive) emitIPv6SubProtocol(b *prog, onMatch, onMiss labelID) {
 	switch p.subProtocol {
-	case filterSubProtocolStp:
+	case filterSubProtocolSCTP:
 		subOk := b.newLabel()
 		b.compareSubProtocolSctp(subOk, onMiss)
 		b.bind(subOk)
@@ -545,7 +735,7 @@ func (p primitive) emitUnsetProtocol(b *prog, onMatch, onMiss labelID) {
 		b.compareIPv6Protocol(p.protoNum(), onMatch, onMiss)
 
 	// Dual-stack sub-protocols: try IPv6 first, then IPv4.
-	case filterSubProtocolUDP, filterSubProtocolTCP, filterSubProtocolStp,
+	case filterSubProtocolUDP, filterSubProtocolTCP, filterSubProtocolSCTP,
 		filterSubProtocolPim, filterSubProtocolEsp, filterSubProtocolAh,
 		filterSubProtocolVrrp:
 		tryIP4 := b.newLabel()
@@ -559,6 +749,13 @@ func (p primitive) emitUnsetProtocol(b *prog, onMatch, onMiss labelID) {
 		b.compareProtocolIP4(ip4Ok, onMiss)
 		b.bind(ip4Ok)
 		b.compareIPv4Protocol(p.protoNum(), onMatch, onMiss)
+
+	case filterSubProtocolSTP:
+		if !b.layout.hasL2Protocols() {
+			b.emitJump(onMiss)
+			return
+		}
+		b.compareProtocolSTP(onMatch, onMiss)
 	}
 }
 
@@ -577,7 +774,7 @@ func (p primitive) emitSubProtocolCompare(b *prog, onMatch, onMiss labelID, ip6 
 		b.compareSubProtocolUDP(subOk, onMiss)
 		b.bind(subOk)
 
-	case filterSubProtocolStp:
+	case filterSubProtocolSCTP:
 		subOk := b.newLabel()
 		b.compareSubProtocolSctp(subOk, onMiss)
 		b.bind(subOk)
@@ -615,7 +812,7 @@ func (p primitive) protoNum() uint32 {
 		return ipProtocolTCP
 	case filterSubProtocolUDP:
 		return ipProtocolUDP
-	case filterSubProtocolStp:
+	case filterSubProtocolSCTP:
 		return ipProtocolSctp
 	case filterSubProtocolIcmp:
 		return ipProtocolIcmp
@@ -654,16 +851,54 @@ func (p primitive) Equal(f Filter) bool {
 func (p primitive) validate() error {
 	switch {
 	case p.subProtocol == filterSubProtocolUnknown:
+		if _, err := strconv.ParseUint(p.id, 0, 8); err == nil {
+			return unsupportedFeature("numeric protocol")
+		}
 		return fmt.Errorf("unknown protocol %s", p.id)
+	case p.kind == filterKindGateway:
+		return unsupportedFeature("gateway")
+	case p.kind == filterKindVLAN:
+		if p.id == "" {
+			return nil
+		}
+		vlanID, err := strconv.ParseUint(p.id, 10, 12)
+		if err != nil || vlanID > 4095 {
+			return fmt.Errorf("invalid vlan id: %s", p.id)
+		}
+		return nil
+	case p.kind == filterKindMPLS:
+		if p.id == "" {
+			return nil
+		}
+		if _, err := strconv.ParseUint(p.id, 10, 20); err != nil {
+			return fmt.Errorf("invalid mpls label: %s", p.id)
+		}
+		return nil
+	case p.protocol == filterProtocolFddi:
+		return unsupportedFeature("fddi")
+	case p.protocol == filterProtocolTr:
+		return unsupportedFeature("tr")
+	case p.protocol == filterProtocolWlan:
+		return unsupportedFeature("wlan")
+	case p.protocol == filterProtocolDecnet:
+		return unsupportedFeature("decnet")
+	case isUnsupportedSubProtocol(p.subProtocol):
+		return unsupportedFeature(subProtocolName(p.subProtocol))
+	case !isSupportedCombination(p):
+		return unsupportedFeature("qualifier combination")
+	case p.kind == filterKindUnset && p.id != "":
+		return fmt.Errorf("parse error")
+	case p.kind == filterKindUnset && p.direction != filterDirectionSrcOrDst:
+		return fmt.Errorf("direction qualifier requires host, net, port, or portrange")
 	case p.kind == filterKindHost:
 		switch p.protocol {
 		case filterProtocolIP, filterProtocolIP6, filterProtocolArp, filterProtocolRarp, filterProtocolUnset:
 			if p.id == "" {
 				return fmt.Errorf("blank host")
 			}
-			addr, network, _ := getNetAndMask(p.id)
+			addr, network, parseErr := getNetAndMask(p.id)
 			var maskFull net.IPMask
-			if addr != nil && network != nil {
+			if parseErr == nil && addr != nil && network != nil {
 				if addr.To4() != nil {
 					maskFull = ip4MaskFull
 				} else {
@@ -673,24 +908,9 @@ func (p primitive) validate() error {
 					return fmt.Errorf("invalid host address with CIDR: %s", p.id)
 				}
 			}
-			if addr == nil {
-				a4, a6, err := p.getAddrs()
-				if err != nil || (len(a4)+len(a6) == 0) {
-					return fmt.Errorf("unknown host: %s", p.id)
-				}
-				for _, a := range a4 {
-					if a == nil {
-						return fmt.Errorf("invalid address return in lookup: %s", a)
-					}
-				}
-				for _, a := range a6 {
-					if a == nil {
-						return fmt.Errorf("invalid address return in lookup: %s", a)
-					}
-				}
-			}
 		case filterProtocolEther:
-			if _, err := net.ParseMAC(p.id); err != nil {
+			hardwareAddr, err := net.ParseMAC(p.id)
+			if err != nil || len(hardwareAddr) != 6 {
 				return fmt.Errorf("invalid ethernet address: %s", p.id)
 			}
 		}
@@ -706,10 +926,29 @@ func (p primitive) validate() error {
 		if _, err := findPort(p.id); err != nil {
 			return err
 		}
+		if !isPortSubProtocol(p.subProtocol) {
+			return unsupportedFeature("port protocol " + subProtocolName(p.subProtocol))
+		}
+	case p.kind == filterKindPortRange:
+		if _, _, err := findPortRange(p.id); err != nil {
+			return err
+		}
+		if !isPortSubProtocol(p.subProtocol) {
+			return unsupportedFeature("portrange protocol " + subProtocolName(p.subProtocol))
+		}
 	case p.kind == filterKindNet:
 		addr, network, err := getNetAndMask(p.id)
 		if err != nil {
 			return err
+		}
+		isIPv4 := addr.To4() != nil
+		if p.protocol == filterProtocolIP6 && isIPv4 {
+			return fmt.Errorf("ipv4 network used with ip6 qualifier: %s", p.id)
+		}
+		needsIPv4 := p.protocol == filterProtocolIP || p.protocol == filterProtocolArp ||
+			p.protocol == filterProtocolRarp
+		if needsIPv4 && !isIPv4 {
+			return fmt.Errorf("ipv6 network used with ipv4 qualifier: %s", p.id)
 		}
 		masked := addr.Mask(network.Mask)
 		if !addr.Equal(masked) {
@@ -721,16 +960,84 @@ func (p primitive) validate() error {
 	return nil
 }
 
-func (p primitive) getAddrs() ([]net.IP, []net.IP, error) {
-	a6, a4, addrs := []net.IP{}, []net.IP{}, []net.IP{}
-	if addr := net.ParseIP(p.id); addr != nil {
-		addrs = append(addrs, addr)
-	} else {
-		resolvedAddrs, _ := resolver.LookupHost(context.Background(), p.id)
-		for _, a := range resolvedAddrs {
-			addrs = append(addrs, net.ParseIP(a))
+func isSupportedCombination(p primitive) bool {
+	switch p.kind {
+	case filterKindHost:
+		if p.protocol != filterProtocolUnset && p.protocol != filterProtocolEther &&
+			p.protocol != filterProtocolIP && p.protocol != filterProtocolIP6 &&
+			p.protocol != filterProtocolArp && p.protocol != filterProtocolRarp {
+			return false
+		}
+		return p.subProtocol != filterSubProtocolSTP && (p.subProtocol == filterSubProtocolUnset ||
+			isSupportedProtocolPrimitive(p.protocol, p.subProtocol))
+	case filterKindNet:
+		if p.protocol != filterProtocolUnset && p.protocol != filterProtocolIP &&
+			p.protocol != filterProtocolIP6 && p.protocol != filterProtocolArp &&
+			p.protocol != filterProtocolRarp {
+			return false
+		}
+		return p.subProtocol != filterSubProtocolSTP && (p.subProtocol == filterSubProtocolUnset ||
+			isSupportedProtocolPrimitive(p.protocol, p.subProtocol))
+	case filterKindPort, filterKindPortRange:
+		return p.protocol == filterProtocolUnset || p.protocol == filterProtocolIP ||
+			p.protocol == filterProtocolIP6
+	case filterKindMulticast:
+		return p.subProtocol == filterSubProtocolUnset
+	case filterKindUnset:
+		return isSupportedProtocolPrimitive(p.protocol, p.subProtocol)
+	default:
+		return true
+	}
+}
+
+func isSupportedProtocolPrimitive(protocol filterProtocol, subProtocol filterSubProtocol) bool {
+	if subProtocol == filterSubProtocolUnset {
+		return true
+	}
+	switch protocol {
+	case filterProtocolUnset:
+		switch subProtocol {
+		case filterSubProtocolTCP, filterSubProtocolUDP, filterSubProtocolSCTP,
+			filterSubProtocolIcmp, filterSubProtocolIcmp6, filterSubProtocolIgmp,
+			filterSubProtocolPim, filterSubProtocolEsp, filterSubProtocolAh,
+			filterSubProtocolVrrp, filterSubProtocolSTP:
+			return true
+		}
+	case filterProtocolIP:
+		switch subProtocol {
+		case filterSubProtocolTCP, filterSubProtocolUDP, filterSubProtocolSCTP,
+			filterSubProtocolIcmp, filterSubProtocolIgmp, filterSubProtocolPim,
+			filterSubProtocolEsp, filterSubProtocolAh, filterSubProtocolVrrp:
+			return true
+		}
+	case filterProtocolIP6:
+		switch subProtocol {
+		case filterSubProtocolTCP, filterSubProtocolUDP, filterSubProtocolSCTP,
+			filterSubProtocolIcmp6, filterSubProtocolPim, filterSubProtocolEsp,
+			filterSubProtocolAh, filterSubProtocolVrrp:
+			return true
+		}
+	case filterProtocolEther:
+		switch subProtocol {
+		case filterSubProtocolIP, filterSubProtocolIP6, filterSubProtocolArp,
+			filterSubProtocolRarp, filterSubProtocolSTP:
+			return true
 		}
 	}
+	return false
+}
+
+func (p primitive) getAddrs(resolver Resolver) ([]net.IP, []net.IP, error) {
+	addrs := p.resolved
+	if len(addrs) == 0 {
+		var err error
+		addrs, err = p.resolve(resolver)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	a4 := make([]net.IP, 0, len(addrs))
+	a6 := make([]net.IP, 0, len(addrs))
 	for _, a := range addrs {
 		if a.To4() != nil {
 			a4 = append(a4, a)
@@ -743,7 +1050,10 @@ func (p primitive) getAddrs() ([]net.IP, []net.IP, error) {
 
 func findPort(portStr string) (int, error) {
 	if port, err := strconv.Atoi(portStr); err == nil {
-		return port, nil
+		if port >= 0 && port <= 65535 {
+			return port, nil
+		}
+		return -1, fmt.Errorf("invalid port: %s", portStr)
 	}
 	if port, err := net.LookupPort("tcp", portStr); err == nil {
 		return port, nil
@@ -752,4 +1062,50 @@ func findPort(portStr string) (int, error) {
 		return port, nil
 	}
 	return -1, fmt.Errorf("invalid port: %s", portStr)
+}
+
+func findPortRange(value string) (uint32, uint32, error) {
+	first, last, ok := strings.Cut(value, "-")
+	if !ok || first == "" || last == "" || strings.Contains(last, "-") {
+		return 0, 0, fmt.Errorf("invalid portrange: %s", value)
+	}
+	minimum, err := findPort(first)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid portrange: %s", value)
+	}
+	maximum, err := findPort(last)
+	if err != nil || minimum > maximum {
+		return 0, 0, fmt.Errorf("invalid portrange: %s", value)
+	}
+	return uint32(minimum), uint32(maximum), nil
+}
+
+func isPortSubProtocol(protocol filterSubProtocol) bool {
+	switch protocol {
+	case filterSubProtocolUnset, filterSubProtocolTCP, filterSubProtocolUDP, filterSubProtocolSCTP:
+		return true
+	default:
+		return false
+	}
+}
+
+func isUnsupportedSubProtocol(protocol filterSubProtocol) bool {
+	switch protocol {
+	case filterSubProtocolAtalk, filterSubProtocolAarp, filterSubProtocolDecnet,
+		filterSubProtocolSca, filterSubProtocolLat, filterSubProtocolMopdl,
+		filterSubProtocolMoprc, filterSubProtocolIso, filterSubProtocolIPx,
+		filterSubProtocolNetbeui, filterSubProtocolIgrp:
+		return true
+	default:
+		return false
+	}
+}
+
+func subProtocolName(protocol filterSubProtocol) string {
+	for name, candidate := range subProtocols {
+		if candidate == protocol {
+			return name
+		}
+	}
+	return "unknown"
 }

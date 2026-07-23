@@ -178,7 +178,7 @@ func (c composite) Distill() Filter {
 		// Only bare primitives are eligible for combine(); negated wrappers
 		// (and nested composites) must survive intact, otherwise their
 		// negation is lost because emit/isAlwaysReject ignore primitive.negator.
-		if p, ok := f.(primitive); ok {
+		if p, ok := f.(primitive); ok && p.kind != filterKindVLAN && p.kind != filterKindMPLS {
 			prims = append(prims, p)
 		} else {
 			others = append(others, f)

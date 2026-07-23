@@ -383,9 +383,7 @@ tokens:
 			p.negator = true
 			continue tokens
 		case tokenGateway:
-			// this really needs to use the composite of two primitives
-			p.protocol = filterProtocolEther
-			p.kind = filterKindHost
+			p.kind = filterKindGateway
 			continue tokens
 		case tokenProto:
 			// the next word is the sub-protocol

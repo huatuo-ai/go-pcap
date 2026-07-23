@@ -70,6 +70,20 @@ func (b *prog) compareSubProtocolSctp(onMatch, onMiss labelID) {
 	b.emitJumpIf(bpf.JumpEqual, ipProtocolSctp, onMatch, onMiss)
 }
 
+func (b *prog) compareProtocolSTP(onMatch, onMiss labelID) {
+	if !b.layout.hasL2Protocols() {
+		b.emitJump(onMiss)
+		return
+	}
+	lengthOK := b.newLabel()
+	b.loadEtherKind()
+	b.emitJumpIf(bpf.JumpGreaterThan, 1500, onMiss, lengthOK)
+	b.bind(lengthOK)
+	b.emit(bpf.LoadAbsolute{Off: b.layout.l3Off(), Size: lengthWord})
+	b.emit(bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: 0xffffff00})
+	b.emitJumpIf(bpf.JumpEqual, 0x42420300, onMatch, onMiss)
+}
+
 func (b *prog) compareIPv4Protocol(proto uint32, onMatch, onMiss labelID) {
 	b.emit(loadIPv4Protocol(b.layout))
 	b.emitJumpIf(bpf.JumpEqual, proto, onMatch, onMiss)
@@ -96,8 +110,9 @@ func (b *prog) loadIPv4HeaderOffset(onMiss labelID) {
 }
 
 func (b *prog) checkEtherAddresses(direction filterDirection, addr string, onMatch, onMiss labelID) {
-	hwAddr, _ := net.ParseMAC(addr)
-	if hwAddr == nil {
+	hwAddr, err := net.ParseMAC(addr)
+	if err != nil || len(hwAddr) != 6 {
+		b.emitJump(onMiss)
 		return
 	}
 	lastFour := binary.BigEndian.Uint32(hwAddr[len(hwAddr)-4:])
@@ -156,6 +171,43 @@ func (b *prog) checkIP4HostAddresses(direction filterDirection, addr net.IP, onM
 		loadIPv4SourceAddress(b.layout), loadIPv4DestinationAddress(b.layout))
 }
 
+func (b *prog) checkIP4HostAddressList(
+	direction filterDirection,
+	addrs []net.IP,
+	onMatch labelID,
+	onMiss labelID,
+) {
+	b.checkIP4AddressList(direction, addrs, onMatch, onMiss, b.checkIP4HostAddresses)
+}
+
+func (b *prog) checkIP4ArpAddressList(
+	direction filterDirection,
+	addrs []net.IP,
+	onMatch labelID,
+	onMiss labelID,
+) {
+	b.checkIP4AddressList(direction, addrs, onMatch, onMiss, b.checkIP4ArpAddresses)
+}
+
+func (b *prog) checkIP4AddressList(
+	direction filterDirection,
+	addrs []net.IP,
+	onMatch labelID,
+	onMiss labelID,
+	check func(filterDirection, net.IP, labelID, labelID),
+) {
+	for i, addr := range addrs {
+		miss := onMiss
+		if i < len(addrs)-1 {
+			miss = b.newLabel()
+		}
+		check(direction, addr, onMatch, miss)
+		if miss != onMiss {
+			b.bind(miss)
+		}
+	}
+}
+
 func (b *prog) checkIP4ArpAddresses(direction filterDirection, addr net.IP, onMatch, onMiss labelID) {
 	b.checkIP4Addresses(direction, addr, nil, onMatch, onMiss,
 		loadArpSenderAddress(b.layout), loadArpTargetAddress(b.layout))
@@ -170,8 +222,9 @@ func (b *prog) checkIP4NetArpAddresses(direction filterDirection, addr string, o
 }
 
 func (b *prog) checkIP4NetAddresses(direction filterDirection, addr string, ip bool, onMatch, onMiss labelID) {
-	addrBytes, network, _ := getNetAndMask(addr)
-	if addrBytes == nil {
+	addrBytes, network, err := getNetAndMask(addr)
+	if err != nil || addrBytes == nil {
+		b.emitJump(onMiss)
 		return
 	}
 	var maskCheck *bpf.ALUOpConstant
@@ -187,7 +240,14 @@ func (b *prog) checkIP4NetAddresses(direction filterDirection, addr string, ip b
 	}
 }
 
-func (b *prog) checkIP4Addresses(direction filterDirection, addr []byte, maskCheck *bpf.ALUOpConstant, onMatch, onMiss labelID, loadSrcDst ...bpf.Instruction) {
+func (b *prog) checkIP4Addresses(
+	direction filterDirection,
+	addr []byte,
+	maskCheck *bpf.ALUOpConstant,
+	onMatch labelID,
+	onMiss labelID,
+	loadSrcDst ...bpf.Instruction,
+) {
 	if addr == nil {
 		return
 	}
@@ -239,11 +299,33 @@ func (b *prog) checkIP6HostAddresses(direction filterDirection, addr net.IP, onM
 	b.checkIP6Addresses(direction, addr, nil, onMatch, onMiss)
 }
 
+func (b *prog) checkIP6HostAddressList(
+	direction filterDirection,
+	addrs []net.IP,
+	onMatch labelID,
+	onMiss labelID,
+) {
+	for i, addr := range addrs {
+		miss := onMiss
+		if i < len(addrs)-1 {
+			miss = b.newLabel()
+		}
+		b.checkIP6HostAddresses(direction, addr, onMatch, miss)
+		if miss != onMiss {
+			b.bind(miss)
+		}
+	}
+}
+
 func (b *prog) checkIP6NetAddresses(direction filterDirection, addr net.IP, mask net.IPMask, onMatch, onMiss labelID) {
 	b.checkIP6Addresses(direction, addr, mask, onMatch, onMiss)
 }
 
 func (b *prog) checkIP6Addresses(direction filterDirection, addr []byte, mask net.IPMask, onMatch, onMiss labelID) {
+	if len(addr) < net.IPv6len {
+		b.emitJump(onMiss)
+		return
+	}
 	addrArray := [4]uint32{
 		binary.BigEndian.Uint32(addr[:4]),
 		binary.BigEndian.Uint32(addr[4:8]),
@@ -276,7 +358,12 @@ func (b *prog) loadAndCompareIPv6Address(addr [4]uint32, mask net.IPMask, source
 		start = b.layout.l3Off() + intraIP6DstAddrStart
 	}
 	if mask != nil {
-		maskSize, _ = mask.Size()
+		var maskBits int
+		maskSize, maskBits = mask.Size()
+		if maskSize < 0 || maskBits != net.IPv6len*8 {
+			b.emitJump(onMiss)
+			return
+		}
 		partWords := maskSize % bitsPerWord
 		if partWords != 0 {
 			maskStartOff := (maskSize / bitsPerWord) * 4
@@ -336,6 +423,50 @@ func (b *prog) checkPorts(direction filterDirection, port uint32, onMatch, onMis
 		b.bind(cont)
 		b.emit(loadDestination)
 		b.emitJumpIf(bpf.JumpEqual, port, onMatch, onMiss)
+	}
+}
+
+func (b *prog) checkPortRange(
+	direction filterDirection,
+	minimum uint32,
+	maximum uint32,
+	onMatch labelID,
+	onMiss labelID,
+	ip6 bool,
+) {
+	var loadSource, loadDestination bpf.Instruction
+	if ip6 {
+		loadSource = loadIPv6SourcePort(b.layout)
+		loadDestination = loadIPv6DestinationPort(b.layout)
+	} else {
+		loadSource = loadIPv4SourcePort(b.layout)
+		loadDestination = loadIPv4DestinationPort(b.layout)
+		b.loadIPv4HeaderOffset(onMiss)
+	}
+
+	check := func(load bpf.Instruction, match, miss labelID) {
+		upper := b.newLabel()
+		b.emit(load)
+		b.emitJumpIf(bpf.JumpGreaterOrEqual, minimum, upper, miss)
+		b.bind(upper)
+		b.emitJumpIf(bpf.JumpGreaterThan, maximum, miss, match)
+	}
+
+	switch direction {
+	case filterDirectionSrc:
+		check(loadSource, onMatch, onMiss)
+	case filterDirectionDst:
+		check(loadDestination, onMatch, onMiss)
+	case filterDirectionSrcOrDst:
+		tryDestination := b.newLabel()
+		check(loadSource, onMatch, tryDestination)
+		b.bind(tryDestination)
+		check(loadDestination, onMatch, onMiss)
+	case filterDirectionSrcAndDst:
+		checkDestination := b.newLabel()
+		check(loadSource, checkDestination, onMiss)
+		b.bind(checkDestination)
+		check(loadDestination, onMatch, onMiss)
 	}
 }
 

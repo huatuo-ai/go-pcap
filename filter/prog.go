@@ -93,6 +93,18 @@ func (p *prog) emitJumpIf(cond bpf.JumpTest, val uint32, tTrue, tFalse labelID) 
 	})
 }
 
+func (p *prog) emitJumpIfX(cond bpf.JumpTest, tTrue, tFalse labelID) {
+	if tTrue == labelInvalid || tFalse == labelInvalid {
+		panic("prog: emitJumpIfX target cannot be labelInvalid")
+	}
+	p.insts = append(p.insts, pendingInst{
+		inst:    bpf.JumpIfX{Cond: cond},
+		kind:    instJumpIfX,
+		targetT: tTrue,
+		targetF: tFalse,
+	})
+}
+
 func (p *prog) emitJump(target labelID) {
 	if target == labelInvalid {
 		panic("prog: emitJump target cannot be labelInvalid")

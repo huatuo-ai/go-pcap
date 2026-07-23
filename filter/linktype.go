@@ -34,9 +34,18 @@ const (
 var (
 	ErrEmptyFilter         = errors.New("filter: empty expression")
 	ErrInvalidFilter       = errors.New("filter: invalid expression")
+	ErrUnsupportedFeature  = errors.New("filter: unsupported feature")
 	ErrUnsupportedLinkType = errors.New("filter: unsupported link type")
 	ErrL2OnlyLinkType      = errors.New("filter: expression matches only L2 protocols on non-L2 link type")
+	ErrHostResolution      = errors.New("filter: host resolution failed")
 )
+
+// CompileOptions supplies the packet layout and environment-dependent inputs
+// used while compiling an expression. A nil Resolver uses net.DefaultResolver.
+type CompileOptions struct {
+	LinkType LinkType
+	Resolver Resolver
+}
 
 // linkLayout abstracts per-link-type packet layout.
 // Concrete implementations are ethernetLayout and rawLayout, selected
@@ -125,22 +134,27 @@ func layoutFor(lt LinkType) (linkLayout, error) {
 // Compile parses a tcpdump filter expression and compiles it to cBPF
 // instructions for the given link type.
 func Compile(expr string, lt LinkType) ([]bpf.Instruction, error) {
+	return CompileWithOptions(expr, CompileOptions{LinkType: lt})
+}
+
+// CompileWithOptions parses and compiles a tcpdump filter expression.
+func CompileWithOptions(expr string, options CompileOptions) ([]bpf.Instruction, error) {
 	if expr == "" {
 		return nil, ErrEmptyFilter
 	}
-	layout, err := layoutFor(lt)
+	layout, err := layoutFor(options.LinkType)
 	if err != nil {
 		return nil, err
 	}
-	e := NewExpression(expr)
-	if e == nil {
-		return nil, ErrEmptyFilter
+	f, err := parseFilterExpression(expr)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidFilter, err)
 	}
-	f := e.Compile()
-	if f == nil {
-		return nil, fmt.Errorf("%w: %q", ErrInvalidFilter, expr)
+	prepared, err := prepareFilter(f, options.Resolver)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidFilter, err)
 	}
-	insns, err := f.Compile(layout)
+	insns, err := compilePreparedFilter(prepared, layout)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidFilter, err)
 	}
@@ -158,21 +172,14 @@ func Compile(expr string, lt LinkType) ([]bpf.Instruction, error) {
 
 // Size returns the instruction count that Compile would emit for expr+lt.
 func Size(expr string, lt LinkType) (int, error) {
-	if expr == "" {
-		return 0, ErrEmptyFilter
-	}
-	layout, err := layoutFor(lt)
+	return SizeWithOptions(expr, CompileOptions{LinkType: lt})
+}
+
+// SizeWithOptions returns the instruction count CompileWithOptions emits.
+func SizeWithOptions(expr string, options CompileOptions) (int, error) {
+	insns, err := CompileWithOptions(expr, options)
 	if err != nil {
 		return 0, err
 	}
-	e := NewExpression(expr)
-	if e == nil {
-		return 0, ErrEmptyFilter
-	}
-	f := e.Compile()
-	if f == nil {
-		return 0, fmt.Errorf("%w: %q", ErrInvalidFilter, expr)
-	}
-
-	return int(f.Size(layout)), nil
+	return len(insns), nil
 }

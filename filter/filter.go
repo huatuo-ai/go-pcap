@@ -23,6 +23,7 @@
 package filter
 
 import (
+	"net"
 	"sort"
 
 	"golang.org/x/net/bpf"
@@ -46,11 +47,22 @@ type Filter interface {
 // handles the always-accept/always-reject short-circuits, then falls through
 // to creating a prog and calling emit.
 func compileFilter(f Filter, layout linkLayout) ([]bpf.Instruction, error) {
+	prepared, err := prepareFilter(f, net.DefaultResolver)
+	if err != nil {
+		return nil, err
+	}
+	return compilePreparedFilter(prepared, layout)
+}
+
+func compilePreparedFilter(f Filter, layout linkLayout) ([]bpf.Instruction, error) {
 	if f.isAlwaysReject(layout) {
 		return []bpf.Instruction{returnDrop, returnKeep}, nil
 	}
 	if f.isAlwaysAccept(layout) {
 		return []bpf.Instruction{returnKeep, returnDrop}, nil
+	}
+	if filterNeedsCursor(f) {
+		return compileCursorFilter(f, layout)
 	}
 	b := newProg(layout)
 	f.emit(b, labelKeep, labelFail)

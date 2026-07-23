@@ -22,10 +22,18 @@ const (
 	jumpMask    uint32 = 0x1fff
 
 	// Protocol numbers (network layer).
-	etherTypeIPv4 uint32 = 0x0800
-	etherTypeIPv6 uint32 = 0x86dd
-	etherTypeArp  uint32 = 0x806
-	etherTypeRarp uint32 = 0x8035
+	etherTypeIPv4          uint32 = 0x0800
+	etherTypeIPv6          uint32 = 0x86dd
+	etherTypeArp           uint32 = 0x806
+	etherTypeRarp          uint32 = 0x8035
+	etherTypeVLAN          uint32 = 0x8100
+	etherTypeQinQ          uint32 = 0x88a8
+	etherTypeVLAN9100      uint32 = 0x9100
+	etherTypeMPLSUnicast   uint32 = 0x8847
+	etherTypeMPLSMulticast uint32 = 0x8848
+
+	vlanHeaderLength uint32 = 4
+	mplsLabelLength  uint32 = 4
 
 	ipProtocolTCP   uint32 = 0x06
 	ipProtocolUDP   uint32 = 0x11
@@ -69,6 +77,9 @@ const (
 	filterKindPort
 	filterKindPortRange
 	filterKindMulticast
+	filterKindGateway
+	filterKindVLAN
+	filterKindMPLS
 )
 
 //nolint:unused
@@ -142,6 +153,7 @@ var protocols = map[string]filterProtocol{
 	"ip6":     filterProtocolIP6,
 	"arp":     filterProtocolArp,
 	"rarp":    filterProtocolRarp,
+	"decnet":  filterProtocolDecnet,
 	"decnett": filterProtocolDecnet,
 }
 
@@ -161,7 +173,7 @@ const (
 	filterSubProtocolMopdl
 	filterSubProtocolMoprc
 	filterSubProtocolIso
-	filterSubProtocolStp
+	filterSubProtocolSTP
 	filterSubProtocolIPx
 	filterSubProtocolNetbeui
 	filterSubProtocolIcmp
@@ -174,6 +186,7 @@ const (
 	filterSubProtocolVrrp
 	filterSubProtocolUDP
 	filterSubProtocolTCP
+	filterSubProtocolSCTP
 	filterSubProtocolUnknown
 )
 
@@ -190,7 +203,7 @@ var subProtocols = map[string]filterSubProtocol{
 	"modpl":   filterSubProtocolMopdl,
 	"morpc":   filterSubProtocolMoprc,
 	"iso":     filterSubProtocolIso,
-	"stp":     filterSubProtocolStp,
+	"stp":     filterSubProtocolSTP,
 	"ipx":     filterSubProtocolIPx,
 	"netbeui": filterSubProtocolNetbeui,
 	"icmp":    filterSubProtocolIcmp,
@@ -203,4 +216,5 @@ var subProtocols = map[string]filterSubProtocol{
 	"vrrp":    filterSubProtocolVrrp,
 	"udp":     filterSubProtocolUDP,
 	"tcp":     filterSubProtocolTCP,
+	"sctp":    filterSubProtocolSCTP,
 }
