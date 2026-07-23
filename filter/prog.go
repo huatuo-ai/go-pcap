@@ -48,14 +48,15 @@ type pendingInst struct {
 // label targets; finalize resolves labels to relative skip offsets.
 type prog struct {
 	layout linkLayout
+	target CompileTarget
 	insts  []pendingInst
 	labels map[labelID]int
 	next   labelID
 	done   bool
 }
 
-func newProg(layout linkLayout) *prog {
-	return &prog{layout: layout, labels: make(map[labelID]int)}
+func newProg(layout linkLayout, target CompileTarget) *prog {
+	return &prog{layout: layout, target: target, labels: make(map[labelID]int)}
 }
 
 func (p *prog) newLabel() labelID {

@@ -46,6 +46,14 @@ program manually. For byte streams that begin at an IP header, use the
 package-level compiler described in [Ethernet and RAW link
 types](linktype-raw.md).
 
+On Linux, `SetBPFFilter` compiles for the live AF_PACKET socket target. VLAN
+filters such as `vlan 3` use the kernel's socket BPF VLAN auxiliary metadata
+when a NIC or the stack has stripped the 802.1Q header, and keep an inline
+Ethernet-tag fallback for packets whose VLAN header is still present in packet
+bytes. Package-level `filter.Compile` remains portable and does not emit these
+Linux-only socket extensions unless `CompileWithOptions` selects the Linux
+socket target.
+
 ## Decode with gopacket
 
 ```go

@@ -21,7 +21,7 @@ import (
 	"golang.org/x/net/bpf"
 )
 
-func pnew() *prog { return newProg(ethernetLayout{}) }
+func pnew() *prog { return newProg(ethernetLayout{}, CompileTargetPortable) }
 
 func TestProgEmpty(t *testing.T) {
 	p := pnew()

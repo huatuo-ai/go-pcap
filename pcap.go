@@ -9,8 +9,6 @@ import (
 
 	"github.com/gopacket/gopacket"
 	"golang.org/x/net/bpf"
-
-	"github.com/huatuo-ai/go-pcap/filter"
 )
 
 const (
@@ -63,7 +61,7 @@ func (h *Handle) SetBPFFilter(expr string) error {
 	if expr2 == "" {
 		return nil
 	}
-	instructions, err := filter.Compile(expr2, filter.LinkTypeEthernet)
+	instructions, err := compileLiveFilter(expr2)
 	if err != nil {
 		return fmt.Errorf("compile filter into instructions: %w", err)
 	}

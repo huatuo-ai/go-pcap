@@ -14,7 +14,11 @@
 
 package filter
 
-import "golang.org/x/net/bpf"
+import (
+	"strconv"
+
+	"golang.org/x/net/bpf"
+)
 
 type probeKind uint8
 
@@ -28,6 +32,7 @@ type packetCursor struct {
 	etherTypeOff uint32
 	l3Offset     uint32
 	mplsDepth    uint16
+	vlanDepth    uint16
 	hasEther     bool
 }
 
@@ -109,8 +114,8 @@ type emitBranches struct {
 	onMiss  emitContinuation
 }
 
-func compileCursorFilter(f Filter, layout linkLayout) ([]bpf.Instruction, error) {
-	b := newProg(layout)
+func compileCursorFilter(f Filter, layout linkLayout, target CompileTarget) ([]bpf.Instruction, error) {
+	b := newProg(layout, target)
 	emitFilterWithCursor(
 		f,
 		b,
@@ -155,6 +160,11 @@ func emitPrimitiveWithCursor(
 	cursor packetCursor,
 	branches emitBranches,
 ) {
+	if shouldEmitLinuxSocketVLAN(p, b, cursor) {
+		emitLinuxSocketVLANWithCursor(p, b, cursor, branches)
+		return
+	}
+
 	matched := b.newLabel()
 	missed := b.newLabel()
 	b.layout = cursor.layout()
@@ -172,6 +182,7 @@ func emitPrimitiveWithCursor(
 	case filterKindVLAN:
 		next.etherTypeOff += vlanHeaderLength
 		next.l3Offset += vlanHeaderLength
+		next.vlanDepth++
 	case filterKindMPLS:
 		if next.mplsDepth == 0 {
 			next.probe = probeIPVersion
@@ -183,6 +194,68 @@ func emitPrimitiveWithCursor(
 
 	b.bind(missed)
 	branches.onMiss(b, cursor)
+}
+
+func shouldEmitLinuxSocketVLAN(p primitive, b *prog, cursor packetCursor) bool {
+	return p.kind == filterKindVLAN &&
+		b.target == CompileTargetLinuxSocket &&
+		cursor.hasEther &&
+		cursor.probe == probeEtherType &&
+		cursor.etherTypeOff == 12 &&
+		cursor.mplsDepth == 0 &&
+		cursor.vlanDepth == 0
+}
+
+func emitLinuxSocketVLANWithCursor(
+	p primitive,
+	b *prog,
+	cursor packetCursor,
+	branches emitBranches,
+) {
+	inlinePath := b.newLabel()
+	metadataPath := b.newLabel()
+	inlineMatched := b.newLabel()
+	metadataMatched := b.newLabel()
+	missed := b.newLabel()
+	done := b.newLabel()
+
+	b.emit(bpf.LoadAbsolute{Off: linuxBPFExtVLANTagPresent, Size: lengthByte})
+	b.emitJumpIf(bpf.JumpEqual, 1, metadataPath, inlinePath)
+
+	b.bind(inlinePath)
+	b.layout = cursor.layout()
+	p.emit(b, inlineMatched, missed)
+	b.bind(inlineMatched)
+	inlineNext := cursor
+	inlineNext.etherTypeOff += vlanHeaderLength
+	inlineNext.l3Offset += vlanHeaderLength
+	inlineNext.vlanDepth++
+	branches.onMatch(b, inlineNext)
+	b.emitJump(done)
+
+	b.bind(metadataPath)
+	if p.id == "" {
+		b.emitJump(metadataMatched)
+	} else {
+		vlanID, err := strconv.ParseUint(p.id, 10, 12)
+		if err != nil {
+			b.emitJump(missed)
+		} else {
+			b.emit(bpf.LoadAbsolute{Off: linuxBPFExtVLANTag, Size: lengthHalf})
+			b.emit(bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: 0x0fff})
+			b.emitJumpIf(bpf.JumpEqual, uint32(vlanID), metadataMatched, missed)
+		}
+	}
+	b.bind(metadataMatched)
+	metadataNext := cursor
+	metadataNext.vlanDepth++
+	branches.onMatch(b, metadataNext)
+	b.emitJump(done)
+
+	b.bind(missed)
+	branches.onMiss(b, cursor)
+
+	b.bind(done)
 }
 
 func primitiveUsesInnerNetwork(p primitive) bool {

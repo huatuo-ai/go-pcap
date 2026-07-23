@@ -35,6 +35,11 @@ const (
 	vlanHeaderLength uint32 = 4
 	mplsLabelLength  uint32 = 4
 
+	// Linux socket BPF extensions are encoded as SKF_AD_OFF + SKF_AD_*.
+	// They are accepted by SO_ATTACH_FILTER but are not portable packet loads.
+	linuxBPFExtVLANTag        uint32 = 0xfffff02c
+	linuxBPFExtVLANTagPresent uint32 = 0xfffff030
+
 	ipProtocolTCP   uint32 = 0x06
 	ipProtocolUDP   uint32 = 0x11
 	ipProtocolSctp  uint32 = 0x84

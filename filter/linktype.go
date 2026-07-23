@@ -30,6 +30,18 @@ const (
 	LinkTypeRaw                      // DLT_RAW
 )
 
+// CompileTarget selects environment-specific cBPF lowering.
+type CompileTarget uint8
+
+const (
+	// CompileTargetPortable emits packet-byte-only cBPF suitable for offline
+	// matching and pcap_open_dead style compilation.
+	CompileTargetPortable CompileTarget = iota
+	// CompileTargetLinuxSocket may emit Linux socket BPF extensions such as
+	// VLAN auxiliary metadata loads accepted by SO_ATTACH_FILTER.
+	CompileTargetLinuxSocket
+)
+
 // Sentinel errors.
 var (
 	ErrEmptyFilter         = errors.New("filter: empty expression")
@@ -45,6 +57,7 @@ var (
 type CompileOptions struct {
 	LinkType LinkType
 	Resolver Resolver
+	Target   CompileTarget
 }
 
 // linkLayout abstracts per-link-type packet layout.
@@ -154,7 +167,7 @@ func CompileWithOptions(expr string, options CompileOptions) ([]bpf.Instruction,
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidFilter, err)
 	}
-	insns, err := compilePreparedFilter(prepared, layout)
+	insns, err := compilePreparedFilter(prepared, layout, options.Target)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidFilter, err)
 	}

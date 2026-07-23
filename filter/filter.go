@@ -51,10 +51,10 @@ func compileFilter(f Filter, layout linkLayout) ([]bpf.Instruction, error) {
 	if err != nil {
 		return nil, err
 	}
-	return compilePreparedFilter(prepared, layout)
+	return compilePreparedFilter(prepared, layout, CompileTargetPortable)
 }
 
-func compilePreparedFilter(f Filter, layout linkLayout) ([]bpf.Instruction, error) {
+func compilePreparedFilter(f Filter, layout linkLayout, target CompileTarget) ([]bpf.Instruction, error) {
 	if f.isAlwaysReject(layout) {
 		return []bpf.Instruction{returnDrop, returnKeep}, nil
 	}
@@ -62,9 +62,9 @@ func compilePreparedFilter(f Filter, layout linkLayout) ([]bpf.Instruction, erro
 		return []bpf.Instruction{returnKeep, returnDrop}, nil
 	}
 	if filterNeedsCursor(f) {
-		return compileCursorFilter(f, layout)
+		return compileCursorFilter(f, layout, target)
 	}
-	b := newProg(layout)
+	b := newProg(layout, target)
 	f.emit(b, labelKeep, labelFail)
 	return b.finalize()
 }
