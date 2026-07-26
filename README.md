@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/img/go-pcap-logo-v3.png" alt="Go-Pcap shoebill wordmark logo" width="600" />
+  <img src="docs/img/go-pcap-logo-compact.png" alt="Go-Pcap shoebill wordmark logo" width="600" />
 </p>
 
 <p align="center">
