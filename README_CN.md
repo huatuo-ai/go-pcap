@@ -33,7 +33,7 @@ CGO，因此可以方便地使用 `CGO_ENABLED=0` 构建和交叉编译。
 
 下方演示展示 `pcap` CLI 通过一条 L3 感知的 cBPF 过滤表达式抓取 loopback 流量，并输出 tcpdump 兼容的抓包摘要：
 
-<img src="demo.gif" alt="go-pcap 演示" width="1457" height="618" />
+<img src="demo.gif" alt="go-pcap 演示" width="900" height="361" />
 
 ## 为什么维护这个分支
 
