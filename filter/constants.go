@@ -73,7 +73,7 @@ const (
 	intraIP6ContHdrProto uint32 = 40 // offset of protocol in continuation header
 )
 
-type filterKind int
+type filterKind uint8
 
 const (
 	filterKindUnset filterKind = iota
@@ -104,7 +104,7 @@ var kinds2 = map[ExpressionToken]filterKind{
 	tokenMulticast: filterKindMulticast,
 }
 
-type filterDirection int
+type filterDirection uint8
 
 const (
 	filterDirectionUnset filterDirection = iota
@@ -134,7 +134,7 @@ var directions = map[string]filterDirection{
 	"addr4":       filterDirectionAddr4,
 }
 
-type filterProtocol int
+type filterProtocol uint8
 
 const (
 	filterProtocolUnset filterProtocol = iota
@@ -162,7 +162,7 @@ var protocols = map[string]filterProtocol{
 	"decnett": filterProtocolDecnet,
 }
 
-type filterSubProtocol int
+type filterSubProtocol uint8
 
 const (
 	filterSubProtocolUnset filterSubProtocol = iota

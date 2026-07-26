@@ -136,7 +136,7 @@ func emitFilterWithCursor(
 ) {
 	switch v := f.(type) {
 	case primitive:
-		emitPrimitiveWithCursor(v, b, cursor, branches)
+		emitPrimitiveWithCursor(&v, b, cursor, branches)
 	case arithmeticComparison:
 		emitComparisonWithCursor(v, b, cursor, branches)
 	case negated:
@@ -155,7 +155,7 @@ func emitFilterWithCursor(
 }
 
 func emitPrimitiveWithCursor(
-	p primitive,
+	p *primitive,
 	b *prog,
 	cursor packetCursor,
 	branches emitBranches,
@@ -196,7 +196,7 @@ func emitPrimitiveWithCursor(
 	branches.onMiss(b, cursor)
 }
 
-func shouldEmitLinuxSocketVLAN(p primitive, b *prog, cursor packetCursor) bool {
+func shouldEmitLinuxSocketVLAN(p *primitive, b *prog, cursor packetCursor) bool {
 	return p.kind == filterKindVLAN &&
 		b.target == CompileTargetLinuxSocket &&
 		cursor.hasEther &&
@@ -207,7 +207,7 @@ func shouldEmitLinuxSocketVLAN(p primitive, b *prog, cursor packetCursor) bool {
 }
 
 func emitLinuxSocketVLANWithCursor(
-	p primitive,
+	p *primitive,
 	b *prog,
 	cursor packetCursor,
 	branches emitBranches,
@@ -258,7 +258,7 @@ func emitLinuxSocketVLANWithCursor(
 	b.bind(done)
 }
 
-func primitiveUsesInnerNetwork(p primitive) bool {
+func primitiveUsesInnerNetwork(p *primitive) bool {
 	switch p.kind {
 	case filterKindHost:
 		return p.protocol != filterProtocolEther

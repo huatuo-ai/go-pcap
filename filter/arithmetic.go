@@ -22,8 +22,8 @@ import (
 )
 
 type arithmeticExpression interface {
-	emit(*arithmeticEmitter, labelID)
-	equal(arithmeticExpression) bool
+	emit(emitter *arithmeticEmitter, onMiss labelID)
+	equal(other arithmeticExpression) bool
 }
 
 type arithmeticConstant struct {

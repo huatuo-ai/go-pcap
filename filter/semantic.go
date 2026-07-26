@@ -22,7 +22,7 @@ import (
 
 // Resolver resolves host names while preparing a filter for compilation.
 type Resolver interface {
-	LookupHost(context.Context, string) ([]string, error)
+	LookupHost(ctx context.Context, host string) ([]string, error)
 }
 
 type hostResolutionError struct {
