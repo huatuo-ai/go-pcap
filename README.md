@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/img/go-pcap-logo-v3.png" alt="Go-Pcap shoebill wordmark logo" width="480" />
+  <img src="docs/img/go-pcap-icon.png" alt="Go-Pcap shoebill logo" width="140" />
 </p>
 
-<h1 align="center">go-pcap</h1>
+<h1 align="center">Go-Pcap</h1>
 
 <p align="center">
   <strong>Native Go Packet Capture, tcpdump-style cBPF Compilation, CGO-free Cross Builds</strong>
@@ -26,9 +26,12 @@
   <a href="./docs/index.md"><strong>Documentation</strong></a> ·
   <a href="./examples/README.md"><strong>Examples</strong></a>
 </p>
-## What is go-pcap
 
-`go-pcap` is a native Go packet-capture library and tcpdump-style cBPF filter
+---
+
+## What is Go-Pcap
+
+**Go-Pcap** is a native Go packet-capture library and tcpdump-style cBPF filter
 compiler. It provides a libpcap-like capture surface without CGO, making
 `CGO_ENABLED=0` builds and cross-compilation straightforward.
 

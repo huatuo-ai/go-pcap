@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/img/go-pcap-logo-v3.png" alt="go-pcap 鲸头鹳字标 logo" width="480" />
+  <img src="docs/img/go-pcap-icon.png" alt="Go-Pcap 鲸头鹳 logo" width="140" />
 </p>
 
-<h1 align="center">go-pcap</h1>
+<h1 align="center">Go-Pcap</h1>
 
 <p align="center">
   <strong>原生 Go 抓包、tcpdump 风格 cBPF 编译、无 CGO 交叉构建</strong>
@@ -26,9 +26,12 @@
   <a href="./docs/index.md"><strong>Documentation</strong></a> ·
   <a href="./examples/README.md"><strong>Examples</strong></a>
 </p>
-## 什么是 go-pcap
 
-`go-pcap` 是一个原生 Go 的抓包库和 tcpdump 风格 cBPF 过滤编译器。它不依赖
+---
+
+## 什么是 Go-Pcap
+
+**Go-Pcap** 是一个原生 Go 的抓包库和 tcpdump 风格 cBPF 过滤编译器。它不依赖
 CGO，因此可以方便地使用 `CGO_ENABLED=0` 构建和交叉编译。
 
 下方演示展示 `pcap` CLI 通过一条 L3 感知的 cBPF 过滤表达式抓取 loopback 流量，并输出 tcpdump 兼容的抓包摘要：
