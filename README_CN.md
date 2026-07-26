@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/img/go-pcap-logo-v3.png" alt="go-pcap 鹰正在捕获并过滤数据包" width="300" />
+  <img src="docs/img/go-pcap-logo-v3.png" alt="go-pcap 鲸头鹳字标 logo" width="480" />
 </p>
 
 <h1 align="center">go-pcap</h1>
