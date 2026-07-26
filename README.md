@@ -26,7 +26,6 @@
   <a href="./docs/index.md"><strong>Documentation</strong></a> ·
   <a href="./examples/README.md"><strong>Examples</strong></a>
 </p>
-
 ## What is go-pcap
 
 `go-pcap` is a native Go packet-capture library and tcpdump-style cBPF filter
