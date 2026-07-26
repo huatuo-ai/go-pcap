@@ -1,8 +1,6 @@
 <p align="center">
-  <img src="docs/img/go-pcap-icon.png" alt="Go-Pcap 鲸头鹳 logo" width="140" />
+  <img src="docs/img/go-pcap-logo-v3.png" alt="Go-Pcap 鲸头鹳字标 logo" width="600" />
 </p>
-
-<h1 align="center">Go-Pcap</h1>
 
 <p align="center">
   <strong>原生 Go 抓包、tcpdump 风格 cBPF 编译、无 CGO 交叉构建</strong>

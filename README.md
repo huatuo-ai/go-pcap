@@ -1,8 +1,6 @@
 <p align="center">
-  <img src="docs/img/go-pcap-icon.png" alt="Go-Pcap shoebill logo" width="140" />
+  <img src="docs/img/go-pcap-logo-v3.png" alt="Go-Pcap shoebill wordmark logo" width="600" />
 </p>
-
-<h1 align="center">Go-Pcap</h1>
 
 <p align="center">
   <strong>Native Go Packet Capture, tcpdump-style cBPF Compilation, CGO-free Cross Builds</strong>
