@@ -29,206 +29,59 @@
 
 ## What is Go-Pcap
 
-**Go-Pcap** is a native Go packet-capture library and tcpdump-style cBPF filter
-compiler. It provides a libpcap-like capture surface without CGO, making
-`CGO_ENABLED=0` builds and cross-compilation straightforward.
-
-The following recording shows the `pcap` CLI capturing live loopback traffic
-through an L3-aware cBPF filter, printing tcpdump-compatible packet summaries:
+**Go-Pcap** is a native Go packet-capture library and tcpdump-style cBPF filter compiler. It provides a libpcap-like capture surface without CGO, making `CGO_ENABLED=0` builds and cross-compilation straightforward.
 
 ![go-pcap demo](demo.gif)
 
-## Why this fork
+## Key Features
 
-This project is derived from
-[packetcap/go-pcap](https://github.com/packetcap/go-pcap) and remains licensed
-under Apache-2.0. The filter compiler has been substantially reworked by the
-HuaTuo team while retaining the pure-Go design:
+- **Native Go Packet Capture**: Provides a libpcap-like capture API without requiring CGO.
+- **tcpdump-style Filters**: Compiles common protocol, host, network, port, and logical expressions to cBPF.
+- **Ethernet and Raw IP**: Supports both Ethernet (`EN10MB`) and raw IP (`RAW`) packet layouts.
+- **Protocol Coverage**: Supports IPv4, IPv6, ARP/RARP, TCP, UDP, ICMP, ICMP6, IGMP, PIM, ESP, AH, VRRP, VLAN, and MPLS traffic.
+- **Packet Capture CLI**: Prints tcpdump-style summaries and supports commonly used tcpdump display options.
+- **Cross Compilation**: Builds with `CGO_ENABLED=0` for supported Linux and macOS/Darwin targets.
 
-- Compile the same filter AST for Ethernet (`EN10MB`) or raw IP (`RAW`, L3)
-  packet layouts.
-- Use a two-pass, label-based cBPF assembler instead of hand-calculated jump
-  offsets.
-- Correct `and`/`or` precedence, parenthesized negation, composite
-  short-circuiting, and several L2/L3 edge cases.
-- Support IPv4, IPv6, ARP/RARP, TCP, UDP, ICMP, ICMP6, IGMP, PIM, ESP, AH,
-  VRRP, host, network, port, multicast, and common logical combinations.
-- Provide executable Examples, VM behavior tests, tcpdump decision-equivalence
-  checks when tcpdump is installed, and repeatable benchmarks.
+## Getting Started
 
-The implemented filter language is a useful tcpdump-style subset, not a claim
-of complete libpcap grammar compatibility.
-
-## Install
+Install Go-Pcap in your Go module:
 
 ```sh
 go get github.com/huatuo-ai/go-pcap@latest
 ```
 
-## Compile filters for Ethernet or raw IP
+See the [examples](examples/README.md) for library usage and the [documentation](docs/index.md) for detailed guides.
 
-Use the package-level compiler when the input packet layout is known. Do not
-cast a pcap/link-layer numeric value to `filter.LinkType`: choose the semantic
-layout explicitly.
+## Filter Language
 
-```go
-package main
+| Capability | Example |
+| :--- | :--- |
+| Protocol and port | `tcp and port 443` |
+| Direction and range | `src portrange 1000-2000` |
+| IPv6 | `ip6 and udp and port 53` |
+| Packet fields | `tcp[tcpflags] & (tcp-syn\|tcp-ack) == (tcp-syn\|tcp-ack)` |
+| Encapsulation | `vlan 100 and tcp port 443`, `mpls and ip` |
+| Logical expressions | `tcp and port 80 or udp`, `not (tcp or udp)` |
 
-import (
-	"errors"
-	"log"
+See the [filter language guide](docs/guides/filter-language.md) for more details.
 
-	"github.com/huatuo-ai/go-pcap/filter"
-	"golang.org/x/net/bpf"
-)
+## Platform Support
 
-func main() {
-	insns, err := filter.Compile("ip6 and udp and port 53", filter.LinkTypeRaw)
-	if err != nil {
-		log.Fatal(err)
-	}
+| Platform | Capture Support | Notes |
+| :--- | :--- | :--- |
+| Linux | Supported | Uses AF_PACKET and requires packet-capture privileges |
+| macOS/Darwin | Supported | Requires packet-capture privileges |
 
-	raw, err := bpf.Assemble(insns)
-	if err != nil {
-		log.Fatal(err)
-	}
-	_ = raw
+## Documentation
 
-	_, err = filter.Compile("arp", filter.LinkTypeRaw)
-	if errors.Is(err, filter.ErrL2OnlyLinkType) {
-		// Choose Ethernet framing, or reject the L2-only expression.
-	}
-}
-```
-
-`filter.Size(expr, linkType)` returns the number of cBPF instructions that
-`filter.Compile` would emit.
-
-## Link-type behavior and errors
-
-| Layout | Packet starts at | Supported predicates |
-| --- | --- | --- |
-| `filter.LinkTypeEthernet` | Ethernet header | L2 and L3 predicates |
-| `filter.LinkTypeRaw` | IPv4/IPv6 header | L3 predicates only |
-
-On `RAW`, expressions that are entirely L2-only, such as `arp`, `rarp`, or
-`ether host aa:bb:cc:dd:ee:ff`, return `ErrL2OnlyLinkType` rather than silently
-producing a filter with the wrong meaning. Empty expressions return
-`ErrEmptyFilter`; unsupported layouts return `ErrUnsupportedLinkType`.
-
-## Filter language
-
-Common supported expressions include:
-
-```text
-tcp and port 443
-src portrange 1000-2000
-ip6 and udp and port 53
-src and dst host 192.0.2.1
-ip multicast
-tcp[tcpflags] == tcp-syn
-tcp[tcpflags] & (tcp-syn|tcp-ack) == (tcp-syn|tcp-ack)
-vlan 100 and tcp port 443
-mpls and ip
-tcp and port 80 or udp
-not (tcp or udp)
-```
-
-`and` binds tighter than `or`; use parentheses when explicit grouping makes a
-rule easier to read. Packet access supports 1-, 2-, and 4-byte network-order
-loads with explicit bounds checks. TCP flag names follow tcpdump/libpcap, so
-the SYN+ACK mask should be written as `tcp-syn|tcp-ack` rather than
-`syn|ack`. Protocol-number literals, `protochain`, netmask-dependent broadcast
-predicates, packet-context metadata, non-EN10MB/RAW layouts, and the full
-tcpdump grammar are not currently implemented.
-
-## Reliability: tests and benchmarks
-
-Run the full test suite with:
-
-```sh
-make test
-```
-
-It runs unit tests, Go Examples, cBPF VM behavior tests, RAW/L2 boundary tests,
-and a tcpdump/libpcap decision-equivalence suite when `tcpdump` is available.
-The equivalence suite compares packet accept/reject decisions, not instruction
-bytes, because libpcap optimization output can vary by version.
-
-Run repeatable filter benchmarks with:
-
-```sh
-make bench
-```
-
-This executes parser, compiler, size, and VM match/miss benchmarks ten times
-with `-benchmem`, reporting `ns/op`, `B/op`, and `allocs/op`. Compare benchmark
-results only on equivalent machines and Go versions.
-
-## CLI
-
-Build the sample capture utility:
-
-```sh
-make build
-./pcap --help
-```
-
-The CLI prints tcpdump-style packet summaries for common Ethernet, ARP, IPv4,
-IPv6, TCP, UDP, and ICMP traffic. Its common display switches are compatible
-with tcpdump 4.99.x: `-i`, `-c`, `-n`/`-nn`, `-q`, `-v`, `-e`,
-`-X`, `-A`, `-s`, and `-p`. Use `-nn` when scripting so host and service names
-remain numeric and output is deterministic.
-
-```sh
-./pcap -nn -i eth0 -c 10 'tcp port 443'
-./pcap -nn -i eth0 -c 10 'tcp[tcpflags] & (tcp-syn|tcp-ack) == (tcp-syn|tcp-ack)'
-```
-
-This is a live-capture CLI; pcap file read/write modes and the less common
-tcpdump switches are not implemented.
-
-Cross-compilation is supported through the `OS` and `ARCH` Makefile variables.
-By default, the host executable is available as `./pcap` in the project
-root. Target-specific artifacts are also written to the project root; set
-`BINDIR` to place them elsewhere. For 32-bit Linux ARM, select the ABI level
-explicitly:
-
-```sh
-make build OS=linux ARCH=arm GOARM=6 # pcap-linux-armv6
-make build OS=linux ARCH=arm GOARM=7 # pcap-linux-armv7
-```
-
-An ARMv7 binary must not be deployed to an ARMv6 device. The release matrix
-does not publish a soft-float ARM artifact.
-
-## Platform support and limitations
-
-Capture support is available for Linux and macOS/Darwin. Packet capture usually
-requires the appropriate operating-system privileges. On Linux the default
-capture path uses an AF_PACKET TPACKET_V3 mmap ring, so it also needs kernel
-support and `CAP_NET_RAW`. On older kernels or restricted containers,
-`./pcap --syscalls` bypasses the mmap/TPACKET_V3 path; it does not remove the
-capture-permission requirement. `RAW` is a compiler layout for packets
-beginning at an IP header; it is not a substitute for an Ethernet capture
-handle and cannot evaluate L2-only predicates.
+For more information, visit the [Go-Pcap documentation](docs/index.md).
 
 ## Contributing
 
-Issues and pull requests are welcome, especially for new protocol support,
-link types, compatibility cases, and performance work. Please run `make test`
-and the relevant `make bench` cases before submitting a change.
+Issues and pull requests are welcome, especially for new protocol support, link types, compatibility cases, and performance work.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for local checks and pull-request
-expectations. The [documentation](docs/index.md) includes deeper guides for the
-[architecture](docs/concepts/architecture.md), [compiler
-internals](docs/concepts/compiler-internals.md), [new filter
-primitives](docs/contributing/new-primitive.md), and
-[testing](docs/contributing/testing.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local checks and pull-request expectations. The [documentation](docs/index.md) includes deeper guides for the [architecture](docs/concepts/architecture.md), [compiler internals](docs/concepts/compiler-internals.md), and [new filter primitives](docs/contributing/new-primitive.md).
 
-## Acknowledgments and license
+## License
 
-The original capture library is derived from
-[packetcap/go-pcap](https://github.com/packetcap/go-pcap). The L3-aware filter
-compiler, label assembler, and reliability work were developed by the HuaTuo
-team. See [LICENSE](LICENSE) for the Apache-2.0 license text.
+Go-Pcap is derived from [packetcap/go-pcap](https://github.com/packetcap/go-pcap) and is open source under the [Apache License 2.0](LICENSE).
