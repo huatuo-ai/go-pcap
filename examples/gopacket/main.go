@@ -15,7 +15,6 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -43,12 +42,10 @@ func main() {
 	}
 
 	handle, err := pcap.OpenLive(
-		context.Background(),
 		*interfaceName,
 		defaultSnaplen,
 		true,
 		time.Second,
-		pcap.DefaultSyscalls,
 	)
 	if err != nil {
 		log.Fatal(err)

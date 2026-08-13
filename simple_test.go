@@ -55,7 +55,14 @@ func Test_simpleMsg(t *testing.T) {
 	t.Logf("capturing from interface '%s' and port %d\n", iface, dstPorts)
 	var err error
 	var handle *Handle
-	if handle, err = OpenLive(context.Background(), iface, 1600, true, 0, true); err != nil {
+	if handle, err = OpenLiveWithContext(
+		context.Background(),
+		iface,
+		1600,
+		true,
+		0,
+		true,
+	); err != nil {
 		t.Log(err)
 	}
 	if err = handle.SetBPFFilter(filter); err != nil {

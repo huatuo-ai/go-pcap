@@ -6,12 +6,10 @@
 
 ```go
 handle, err := pcap.OpenLive(
-	context.Background(),
 	"eth0",
 	1600,
 	true,
 	time.Second,
-	pcap.DefaultSyscalls,
 )
 if err != nil {
 	return err
@@ -19,9 +17,22 @@ if err != nil {
 defer handle.Close()
 ```
 
-The arguments are, in order: a cancellation context, device name, snapshot length, promiscuous-mode setting, read timeout, and whether to force the syscall capture path. On Linux, the default path uses an AF_PACKET TPACKET_V3 mmap ring. `--syscalls` in the CLI selects the fallback path for older kernels or constrained environments; it does not bypass capture permissions.
+The arguments match `gopacket/pcap.OpenLive`: device name, snapshot length, promiscuous-mode setting, and read timeout. On Linux, the default path uses an AF_PACKET TPACKET_V3 mmap ring.
 
-Use a context that belongs to the lifetime of the capture and always close the handle when finished.
+For explicit cancellation or capture-path selection, use `OpenLiveWithContext`:
+
+```go
+handle, err := pcap.OpenLiveWithContext(
+	ctx,
+	"eth0",
+	1600,
+	true,
+	time.Second,
+	pcap.DefaultSyscalls,
+)
+```
+
+The `--syscalls` CLI flag selects the fallback path for older kernels or constrained environments; it does not bypass capture permissions. Always close the handle when finished.
 
 ## Apply a filter
 

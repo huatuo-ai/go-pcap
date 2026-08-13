@@ -64,7 +64,14 @@ var rootCmd = &cobra.Command{
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		handle, err := pcap.OpenLive(ctx, iface, int32(snaplen), !noPromisc, timeout, useSyscalls)
+		handle, err := pcap.OpenLiveWithContext(
+			ctx,
+			iface,
+			int32(snaplen),
+			!noPromisc,
+			timeout,
+			useSyscalls,
+		)
 		if err != nil {
 			return err
 		}

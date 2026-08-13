@@ -23,18 +23,34 @@ type Packet struct {
 	Error error
 }
 
-// OpenLive open a live capture. Returns a Handle that implements https://godoc.org/github.com/gopacket/gopacket#PacketDataSource
-// so you can pass it there.
-// Use the context to cancel the capture after a timeout or other condition.
-func OpenLive(ctx context.Context, device string, snaplen int32, promiscuous bool, timeout time.Duration, syscalls bool) (handle *Handle, err error) {
+// OpenLive opens a live capture using the platform's default capture path.
+// The returned Handle implements gopacket.PacketDataSource.
+func OpenLive(device string, snaplen int32, promisc bool, timeout time.Duration) (*Handle, error) {
+	return OpenLiveWithContext(
+		context.Background(),
+		device,
+		snaplen,
+		promisc,
+		timeout,
+		DefaultSyscalls,
+	)
+}
+
+// OpenLiveWithContext opens a live capture with cancellation and capture-path control.
+// A nil context is treated as context.Background for compatibility.
+func OpenLiveWithContext(
+	ctx context.Context,
+	device string,
+	snaplen int32,
+	promisc bool,
+	timeout time.Duration,
+	syscalls bool,
+) (*Handle, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	handle, err = openLive(ctx, device, snaplen, promiscuous, timeout, syscalls)
-	if err != nil {
-		return nil, err
-	}
-	return handle, err
+
+	return openLive(ctx, device, snaplen, promisc, timeout, syscalls)
 }
 
 // Listen simple one-step command to listen and send packets over a returned channel
