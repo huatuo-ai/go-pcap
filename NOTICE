@@ -1,0 +1,11 @@
+Go-Pcap
+
+This product is derived from packetcap/go-pcap:
+https://github.com/packetcap/go-pcap
+
+The original project was created by Avi Deitcher and includes contributions
+from the packetcap/go-pcap contributors. Files inherited from that project
+retain attribution to their original authors in their source headers. Files
+created for this fork are attributed to The HuaTuo Authors.
+
+Copyright 2026 The HuaTuo Authors
