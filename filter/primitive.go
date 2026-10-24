@@ -287,6 +287,7 @@ func (p primitive) emitMPLSLabelValue(b *prog, offset uint32, onMatch, onMiss la
 
 func (p primitive) emitHost(b *prog, onMatch, onMiss labelID) {
 	if p.subProtocol != filterSubProtocolUnset {
+		b.loadEtherKind()
 		hostOK := b.newLabel()
 		p.emitUnsetProtocol(b, hostOK, onMiss)
 		b.bind(hostOK)
@@ -512,6 +513,7 @@ func (p primitive) emitPortRange(b *prog, onMatch, onMiss labelID) {
 
 func (p primitive) emitNet(b *prog, onMatch, onMiss labelID) {
 	if p.subProtocol != filterSubProtocolUnset {
+		b.loadEtherKind()
 		netOK := b.newLabel()
 		p.emitUnsetProtocol(b, netOK, onMiss)
 		b.bind(netOK)
@@ -668,7 +670,7 @@ func (p primitive) emitUnset(b *prog, onMatch, onMiss labelID) {
 		ip6Ok := b.newLabel()
 		b.compareProtocolIP6(ip6Ok, onMiss)
 		b.bind(ip6Ok)
-		p.emitIPv6SubProtocol(b, onMatch, onMiss)
+		b.compareIPv6Protocol(p.protoNum(), onMatch, onMiss)
 
 	case filterProtocolArp:
 		if !b.layout.hasL2Protocols() {
@@ -709,21 +711,8 @@ func (p primitive) emitUnset(b *prog, onMatch, onMiss labelID) {
 	}
 }
 
-// emitIPv6SubProtocol checks for a sub-protocol in an IPv6 packet.
-func (p primitive) emitIPv6SubProtocol(b *prog, onMatch, onMiss labelID) {
-	switch p.subProtocol {
-	case filterSubProtocolSCTP:
-		subOk := b.newLabel()
-		b.compareSubProtocolSctp(subOk, onMiss)
-		b.bind(subOk)
-		b.emitJump(onMatch)
-	default:
-		b.compareIPv6Protocol(p.protoNum(), onMatch, onMiss)
-	}
-}
-
-// emitUnsetProtocol emits the dual-stack sub-protocol checks for
-// filterProtocolUnset with filterKindUnset.
+// emitUnsetProtocol emits sub-protocol checks for bare, host, and net predicates.
+// The accumulator must contain the current layout's EtherType or IP version.
 func (p primitive) emitUnsetProtocol(b *prog, onMatch, onMiss labelID) {
 	switch p.subProtocol {
 	// IPv4-only sub-protocols.
@@ -748,7 +737,7 @@ func (p primitive) emitUnsetProtocol(b *prog, onMatch, onMiss labelID) {
 		ip6Ok := b.newLabel()
 		b.compareProtocolIP6(ip6Ok, tryIP4)
 		b.bind(ip6Ok)
-		p.emitIPv6SubProtocol(b, onMatch, onMiss)
+		b.compareIPv6Protocol(p.protoNum(), onMatch, onMiss)
 
 		b.bind(tryIP4)
 		ip4Ok := b.newLabel()
