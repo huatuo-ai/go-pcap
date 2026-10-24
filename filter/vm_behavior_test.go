@@ -16,6 +16,7 @@ package filter
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"slices"
 	"testing"
@@ -129,6 +130,46 @@ func behaviorPacketCorpus(t testing.TB) map[string][]byte {
 				SrcIP: net.ParseIP("2001:db8::30"), DstIP: net.ParseIP("2001:db8::31"),
 			},
 			&layers.ICMPv6{TypeCode: layers.CreateICMPv6TypeCode(layers.ICMPv6TypeEchoRequest, 0)}),
+		"ip6-udp-80": serializeBehaviorPacket(t,
+			eth(layers.EthernetTypeIPv6),
+			&layers.IPv6{
+				Version:    6,
+				HopLimit:   64,
+				NextHeader: layers.IPProtocolUDP,
+				SrcIP:      net.ParseIP("2001:db8::10"),
+				DstIP:      net.ParseIP("2001:db8::20"),
+			},
+			&layers.UDP{
+				SrcPort: 1234,
+				DstPort: 80,
+			}),
+		"ip4-sctp-80": serializeBehaviorPacket(t,
+			eth(layers.EthernetTypeIPv4),
+			&layers.IPv4{
+				Version:  4,
+				IHL:      5,
+				TTL:      64,
+				Protocol: layers.IPProtocolSCTP,
+				SrcIP:    net.ParseIP("10.0.0.1"),
+				DstIP:    net.ParseIP("192.0.2.10"),
+			},
+			&layers.SCTP{
+				SrcPort: 1234,
+				DstPort: 80,
+			}),
+		"ip6-sctp-80": serializeBehaviorPacket(t,
+			eth(layers.EthernetTypeIPv6),
+			&layers.IPv6{
+				Version:    6,
+				HopLimit:   64,
+				NextHeader: layers.IPProtocolSCTP,
+				SrcIP:      net.ParseIP("2001:db8::10"),
+				DstIP:      net.ParseIP("2001:db8::20"),
+			},
+			&layers.SCTP{
+				SrcPort: 1234,
+				DstPort: 80,
+			}),
 		"arp-request": serializeBehaviorPacket(t,
 			eth(layers.EthernetTypeARP),
 			&layers.ARP{
@@ -338,5 +379,102 @@ func TestCompileRejectsInvalidCombinedQualifiers(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestCompiledProtocolQualifiedAddresses(t *testing.T) {
+	packets := behaviorPacketCorpus(t)
+	cases := map[string][]string{
+		"tcp src host 10.0.0.1":                            {"ip4-tcp-80", "ip4-tcp-443"},
+		"tcp dst host 192.0.2.10":                          {"ip4-tcp-80"},
+		"tcp src net 10.0.0.0/24":                          {"ip4-tcp-80", "ip4-tcp-443"},
+		"tcp dst net 192.0.2.0/24":                         {"ip4-tcp-80", "ip4-tcp-443"},
+		"udp src host 10.0.0.1":                            {"ip4-self-udp"},
+		"udp dst host 10.0.0.1":                            {"ip4-self-udp"},
+		"udp src net 10.0.0.0/24":                          {"ip4-udp-53", "ip4-self-udp", "ip4-multicast"},
+		"udp dst net 10.0.0.0/24":                          {"ip4-udp-53", "ip4-self-udp"},
+		"tcp src host 2001:db8::10":                        {"ip6-tcp-80", "ip6-tcp-443"},
+		"tcp dst host 2001:db8::20":                        {"ip6-tcp-80"},
+		"tcp src net 2001:db8::/64":                        {"ip6-tcp-80", "ip6-tcp-443"},
+		"tcp dst net 2001:db8::/64":                        {"ip6-tcp-80", "ip6-tcp-443"},
+		"udp src host 2001:db8::10":                        {"ip6-udp-80"},
+		"udp dst host 2001:db8::20":                        {"ip6-udp-80"},
+		"udp src net 2001:db8::/64":                        {"ip6-udp-53", "ip6-udp-80"},
+		"udp dst net 2001:db8::/64":                        {"ip6-udp-53", "ip6-udp-80"},
+		"sctp src host 10.0.0.1":                           {"ip4-sctp-80"},
+		"sctp dst host 192.0.2.10":                         {"ip4-sctp-80"},
+		"sctp src net 10.0.0.0/24":                         {"ip4-sctp-80"},
+		"sctp dst net 192.0.2.0/24":                        {"ip4-sctp-80"},
+		"sctp src host 2001:db8::10":                       {"ip6-sctp-80"},
+		"sctp dst host 2001:db8::20":                       {"ip6-sctp-80"},
+		"sctp src net 2001:db8::/64":                       {"ip6-sctp-80"},
+		"sctp dst net 2001:db8::/64":                       {"ip6-sctp-80"},
+		"tcp src host 203.0.113.1":                         nil,
+		"udp src net 203.0.113.0/24":                       nil,
+		"tcp dst host 2001:db9::1":                         nil,
+		"udp dst net 2001:db9::/64":                        nil,
+		"port 80 and tcp src host 10.0.0.1":                {"ip4-tcp-80"},
+		"udp src host 10.0.0.1 or tcp dst host 192.0.2.10": {"ip4-self-udp", "ip4-tcp-80"},
+	}
+
+	for expression, accepted := range cases {
+		t.Run(expression, func(t *testing.T) {
+			assertCompiledBehavior(t, expression, packets, accepted)
+		})
+	}
+}
+
+func TestCompiledSCTPProtocols(t *testing.T) {
+	packets := behaviorPacketCorpus(t)
+	cases := map[string][]string{
+		"sctp":           {"ip4-sctp-80", "ip6-sctp-80"},
+		"ip proto sctp":  {"ip4-sctp-80"},
+		"ip6 proto sctp": {"ip6-sctp-80"},
+		"sctp port 80":   {"ip4-sctp-80", "ip6-sctp-80"},
+	}
+
+	for expression, accepted := range cases {
+		t.Run(expression, func(t *testing.T) {
+			assertCompiledBehavior(t, expression, packets, accepted)
+		})
+	}
+}
+
+func assertCompiledBehavior(t *testing.T, expression string, packets map[string][]byte, accepted []string) {
+	t.Helper()
+
+	for _, link := range []LinkType{LinkTypeEthernet, LinkTypeRaw} {
+		for _, target := range []CompileTarget{CompileTargetPortable, CompileTargetLinuxSocket} {
+			t.Run(fmt.Sprintf("link-%d/target-%d", link, target), func(t *testing.T) {
+				instructions, err := CompileWithOptions(expression, CompileOptions{
+					LinkType: link,
+					Target:   target,
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				vm, err := bpf.NewVM(instructions)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				for name, frame := range packets {
+					if link == LinkTypeRaw {
+						if name == "arp-request" || name == "rarp-request" {
+							continue
+						}
+
+						frame = rawBehaviorPacket(t, frame)
+					}
+
+					verdict, err := vm.Run(frame)
+					want := slices.Contains(accepted, name)
+					if err != nil || (verdict != 0) != want {
+						t.Errorf("packet %s: verdict=%d error=%v, want accept=%t", name, verdict, err, want)
+					}
+				}
+			})
+		}
 	}
 }
