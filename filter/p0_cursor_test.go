@@ -17,6 +17,8 @@ package filter
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
+	"slices"
 	"testing"
 
 	"golang.org/x/net/bpf"
@@ -273,4 +275,125 @@ func addMPLSLabelsWithoutBottom(t *testing.T, packet []byte, label uint32) []byt
 	result := addMPLSLabels(t, packet, label)
 	result[16] &^= 0x01
 	return result
+}
+
+// OR alternatives restart at the input cursor; AND propagates a successful branch's cursor.
+func TestCompileCursorBooleanBranches(t *testing.T) {
+	packets := behaviorPacketCorpus(t)
+	frames := map[string][]byte{}
+	for _, name := range []string{"ip4-tcp-80", "ip4-udp-53", "ip6-tcp-80", "ip6-udp-53"} {
+		frames[name] = packets[name]
+		frames["vlan-"+name] = addVLANTags(t, packets[name], vlanTag{
+			etherType: uint16(etherTypeVLAN),
+			id:        100,
+		})
+		frames["mpls-"+name] = addMPLSLabels(t, packets[name], 100)
+	}
+
+	tests := []struct {
+		expression string
+		accepted   []string
+	}{
+		{
+			expression: "vlan or tcp",
+			accepted: []string{
+				"ip4-tcp-80", "ip6-tcp-80", "vlan-ip4-tcp-80",
+				"vlan-ip4-udp-53", "vlan-ip6-tcp-80", "vlan-ip6-udp-53",
+			},
+		},
+		{
+			expression: "mpls or tcp",
+			accepted: []string{
+				"ip4-tcp-80", "ip6-tcp-80", "mpls-ip4-tcp-80",
+				"mpls-ip4-udp-53", "mpls-ip6-tcp-80", "mpls-ip6-udp-53",
+			},
+		},
+		{
+			expression: "(vlan and tcp) or udp",
+			accepted:   []string{"ip4-udp-53", "ip6-udp-53", "vlan-ip4-tcp-80", "vlan-ip6-tcp-80"},
+		},
+		{
+			expression: "(mpls and tcp) or udp",
+			accepted:   []string{"ip4-udp-53", "ip6-udp-53", "mpls-ip4-tcp-80", "mpls-ip6-tcp-80"},
+		},
+		{
+			expression: "(vlan or mpls) and tcp",
+			accepted:   []string{"vlan-ip4-tcp-80", "vlan-ip6-tcp-80", "mpls-ip4-tcp-80", "mpls-ip6-tcp-80"},
+		},
+		{
+			expression: "(vlan and udp) or (vlan and tcp)",
+			accepted:   []string{"vlan-ip4-tcp-80", "vlan-ip4-udp-53", "vlan-ip6-tcp-80", "vlan-ip6-udp-53"},
+		},
+		{
+			expression: "(mpls and udp) or (mpls and tcp)",
+			accepted:   []string{"mpls-ip4-tcp-80", "mpls-ip4-udp-53", "mpls-ip6-tcp-80", "mpls-ip6-udp-53"},
+		},
+		{
+			expression: "(vlan and udp) or tcp",
+			accepted:   []string{"ip4-tcp-80", "ip6-tcp-80", "vlan-ip4-udp-53", "vlan-ip6-udp-53"},
+		},
+		{
+			expression: "(mpls and udp) or tcp",
+			accepted:   []string{"ip4-tcp-80", "ip6-tcp-80", "mpls-ip4-udp-53", "mpls-ip6-udp-53"},
+		},
+		{
+			expression: "not (vlan and udp) and vlan and tcp",
+			accepted:   []string{"vlan-ip4-tcp-80", "vlan-ip6-tcp-80"},
+		},
+		{
+			expression: "not (mpls and udp) and mpls and tcp",
+			accepted:   []string{"mpls-ip4-tcp-80", "mpls-ip6-tcp-80"},
+		},
+		{
+			expression: "len < 1 or tcp",
+			accepted:   []string{"ip4-tcp-80", "ip6-tcp-80"},
+		},
+		{
+			expression: "(len < 1 or tcp) and udp",
+		},
+	}
+
+	for _, tt := range tests {
+		for _, negate := range []bool{false, true} {
+			expression := tt.expression
+			if negate {
+				expression = "not (" + expression + ")"
+			}
+			for _, link := range []LinkType{LinkTypeEthernet, LinkTypeRaw} {
+				t.Run(fmt.Sprintf("%s/link-%d", expression, link), func(t *testing.T) {
+					instructions, err := Compile(expression, link)
+					if link == LinkTypeRaw && errors.Is(err, ErrL2OnlyLinkType) {
+						for name := range packets {
+							if _, tested := frames[name]; tested && slices.Contains(tt.accepted, name) != negate {
+								t.Fatalf("raw L2-only rejection loses expected packet %s", name)
+							}
+						}
+						return
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+
+					vm, err := bpf.NewVM(instructions)
+					if err != nil {
+						t.Fatal(err)
+					}
+
+					for name, frame := range frames {
+						if link == LinkTypeRaw {
+							if _, plain := packets[name]; !plain {
+								continue
+							}
+							frame = rawBehaviorPacket(t, frame)
+						}
+						want := slices.Contains(tt.accepted, name) != negate
+						verdict, err := vm.Run(frame)
+						if err != nil || (verdict != 0) != want {
+							t.Errorf("packet %s: verdict=%d error=%v, want accept=%t", name, verdict, err, want)
+						}
+					}
+				})
+			}
+		}
+	}
 }
