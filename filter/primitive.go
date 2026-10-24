@@ -103,6 +103,12 @@ func (p primitive) Combine(o *primitive) *primitive {
 	default:
 		return nil
 	}
+
+	// Separate valid predicates must not become an invalid qualifier combination.
+	if !isSupportedCombination(c) {
+		return nil
+	}
+
 	return &c
 }
 
