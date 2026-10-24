@@ -282,9 +282,15 @@ func emitCompositeWithCursor(
 	var emitAt func(int, packetCursor)
 	emitAt = func(index int, current packetCursor) {
 		if index == len(c.filters) {
-			branches.onMatch(b, current)
+			if c.and {
+				branches.onMatch(b, current)
+			} else {
+				branches.onMiss(b, current)
+			}
+
 			return
 		}
+
 		if c.and {
 			emitFilterWithCursor(
 				c.filters[index],
