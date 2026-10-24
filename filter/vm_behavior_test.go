@@ -15,7 +15,9 @@
 package filter
 
 import (
+	"errors"
 	"net"
+	"slices"
 	"testing"
 
 	"github.com/gopacket/gopacket"
@@ -205,6 +207,135 @@ func TestCompiledFiltersClassifyPackets(t *testing.T) {
 			}
 			if got := out != 0; got != tt.accept {
 				t.Errorf("accept=%v, want %v (return=%d)", got, tt.accept, out)
+			}
+		})
+	}
+}
+
+func TestCompiledBooleanGroups(t *testing.T) {
+	packets := behaviorPacketCorpus(t)
+	tests := []struct {
+		expr      string
+		acceptAll bool
+		accepted  []string
+	}{
+		{expr: "arp and tcp"},
+		{expr: "(arp) and tcp"},
+		{expr: "((arp or tcp)) and udp"},
+		{
+			expr:     "(arp)",
+			accepted: []string{"arp-request"},
+		},
+		{
+			expr:     "((arp and arp))",
+			accepted: []string{"arp-request"},
+		},
+		{
+			expr:     "(arp and arp) or (tcp and not (arp))",
+			accepted: []string{"arp-request", "ip4-tcp-80", "ip6-tcp-80", "ip4-tcp-443", "ip6-tcp-443"},
+		},
+		{
+			expr:     "not ((arp)) and (udp)",
+			accepted: []string{"ip4-udp-53", "ip6-udp-53"},
+		},
+		{
+			expr:     "(port 80) or 443",
+			accepted: []string{"ip4-tcp-80", "ip6-tcp-80", "ip4-tcp-443", "ip6-tcp-443"},
+		},
+		{expr: "tcp and arp"},
+		{expr: "rarp and udp"},
+		{expr: "arp and port 80"},
+		{expr: "(arp or tcp) and udp"},
+		{
+			expr:      "not (arp and tcp)",
+			acceptAll: true,
+		},
+		{
+			expr:      "not ((arp or tcp) and udp)",
+			acceptAll: true,
+		},
+		{
+			expr:     "arp or (tcp and udp)",
+			accepted: []string{"arp-request"},
+		},
+		{
+			expr:     "(arp and tcp) or udp",
+			accepted: []string{"ip4-udp-53", "ip6-udp-53"},
+		},
+		{
+			expr:     "(arp or tcp) and port 80",
+			accepted: []string{"ip4-tcp-80", "ip6-tcp-80"},
+		},
+		{
+			expr:     "tcp and (port 80 or port 443) and not port 443",
+			accepted: []string{"ip4-tcp-80", "ip6-tcp-80"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.expr, func(t *testing.T) {
+			rawRejectAll := !tt.acceptAll
+			for _, name := range tt.accepted {
+				if name != "arp-request" && name != "rarp-request" {
+					rawRejectAll = false
+					break
+				}
+			}
+
+			for _, linkType := range []LinkType{LinkTypeEthernet, LinkTypeRaw} {
+				for _, target := range []CompileTarget{CompileTargetPortable, CompileTargetLinuxSocket} {
+					instructions, err := CompileWithOptions(tt.expr, CompileOptions{
+						LinkType: linkType,
+						Target:   target,
+					})
+					// The public raw-IP API reports L2-only reject-all programs
+					// through its existing sentinel, rather than returning bytecode.
+					if linkType == LinkTypeRaw && rawRejectAll && errors.Is(err, ErrL2OnlyLinkType) {
+						continue
+					}
+
+					if err != nil {
+						t.Fatalf("link %v target %v: %v", linkType, target, err)
+					}
+
+					vm, err := bpf.NewVM(instructions)
+					if err != nil {
+						t.Fatal(err)
+					}
+
+					for _, name := range []string{"ip4-tcp-80", "ip6-tcp-80", "ip4-tcp-443", "ip6-tcp-443", "ip4-udp-53", "ip6-udp-53", "arp-request", "rarp-request"} {
+						packet := packets[name]
+						if linkType == LinkTypeRaw {
+							if name == "arp-request" || name == "rarp-request" {
+								continue
+							}
+
+							packet = rawBehaviorPacket(t, packet)
+						}
+
+						out, err := vm.Run(packet)
+						if err != nil {
+							t.Fatal(err)
+						}
+
+						want := tt.acceptAll || slices.Contains(tt.accepted, name)
+						if (out != 0) != want {
+							t.Errorf("link %v target %v packet %s: accept=%t, want %t", linkType, target, name, out != 0, want)
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestCompileRejectsInvalidCombinedQualifiers(t *testing.T) {
+	for _, expression := range []string{"arp tcp", "rarp udp", "arp port 80", "ether tcp"} {
+		t.Run(expression, func(t *testing.T) {
+			for _, linkType := range []LinkType{LinkTypeEthernet, LinkTypeRaw} {
+				if _, err := Compile(expression, linkType); !errors.Is(err, ErrInvalidFilter) {
+					t.Fatalf("Compile(%q, %v)=%v, want ErrInvalidFilter", expression, linkType, err)
+				}
 			}
 		})
 	}

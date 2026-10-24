@@ -215,6 +215,13 @@ func (e *Expression) Compile() Filter {
 	var pendingOp bool
 
 	for {
+		// A recursive compile owns exactly one parenthesized expression.
+		nextToken, _ := e.peekPastWhitespace()
+		if nextToken == tokenRight {
+			e.scanPastWhitespace()
+			break
+		}
+
 		var fe Element
 		if fe = e.Next(); fe == nil {
 			break
@@ -231,7 +238,11 @@ func (e *Expression) Compile() Filter {
 		switch v := fe.(type) {
 		case primitive:
 			p := v
-			setPrimitiveDefaults(&p, combo.LastPrimitive())
+			// Recursive groups have already resolved their primitive defaults.
+			if nextToken != tokenLeft {
+				setPrimitiveDefaults(&p, combo.LastPrimitive())
+			}
+
 			if p.negator {
 				combo.filters = append(combo.filters, negated{inner: p})
 			} else {
@@ -344,10 +355,10 @@ tokens:
 	for {
 		tok, _ := e.peekPastWhitespace()
 		// handle the case where the next element will be the end of us
-		if inElement && (tok == tokenAnd || tok == tokenOr || tok == tokenEOF) {
-			// we hit "and" or "or". If we already have started building a primitive,
-			// return the started one. Else return a joiner.
-			// We account for the special case of "src and dst" or "src or dst" below.
+		if inElement && (tok == tokenAnd || tok == tokenOr || tok == tokenEOF || tok == tokenRight) {
+			// Return the completed primitive without consuming its delimiter.
+			// Compile owns the closing parenthesis; a subsequent Next reads joiners.
+			// The special "src and dst" / "src or dst" forms are handled below.
 			return p
 		}
 
